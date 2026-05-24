@@ -28,7 +28,7 @@ $results = Install-WindowsUpdate -Category Drivers -NotCategory "Preview" -Accep
 
 Write-Host "`nResults:" -ForegroundColor Cyan
 $results | ForEach-Object {
-    $status = if ($_.Result -eq 'Succeeded') { "✓" } else { "✗" }
+    $status = if ($_.Result -eq 'Succeeded') { "[OK]" } else { "[FAIL]" }
     Write-Host "  $status $($_.Title)" -ForegroundColor $(if ($_.Result -eq 'Succeeded') { 'Green' } else { 'Red' })
 }
 
