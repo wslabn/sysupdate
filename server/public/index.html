@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SysUpdate Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    #login { display: flex; align-items: center; justify-content: center; height: 100vh; }
+    #login form { background: #1e293b; padding: 2rem; border-radius: 8px; width: 300px; }
+    #login h2 { margin-bottom: 1.5rem; color: #38bdf8; }
+    input { width: 100%; padding: .6rem; margin-bottom: 1rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; }
+    button { width: 100%; padding: .6rem; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    #dashboard { display: none; padding: 2rem; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    header h1 { color: #38bdf8; }
+    #logout { width: auto; padding: .4rem 1rem; background: #334155; color: #e2e8f0; }
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
+    th { background: #334155; padding: .75rem 1rem; text-align: left; font-size: .85rem; color: #94a3b8; }
+    td { padding: .75rem 1rem; border-top: 1px solid #334155; font-size: .9rem; }
+    tr:hover td { background: #263548; cursor: pointer; }
+    .online { color: #4ade80; } .stale { color: #facc15; } .offline { color: #f87171; }
+    #detail { display: none; position: fixed; top: 0; right: 0; width: 420px; height: 100vh;
+      background: #1e293b; padding: 2rem; overflow-y: auto; border-left: 1px solid #334155; }
+    #detail h2 { color: #38bdf8; margin-bottom: 1rem; }
+    #detail .close { float: right; cursor: pointer; color: #94a3b8; font-size: 1.2rem; }
+    .hw-row { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid #334155; font-size: .85rem; }
+    .hw-row span:first-child { color: #94a3b8; }
+    .event { background: #0f172a; padding: .5rem; border-radius: 4px; margin-bottom: .5rem; font-size: .8rem; }
+    .event .evt-time { color: #94a3b8; }
+    #error { color: #f87171; margin-top: .5rem; font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+<div id="login">
+  <form onsubmit="login(event)">
+    <h2>SysUpdate</h2>
+    <input type="password" id="password" placeholder="Password" required>
+    <button type="submit">Login</button>
+    <div id="error"></div>
+  </form>
+</div>
+
+<div id="dashboard">
+  <header>
+    <h1>SysUpdate Dashboard</h1>
+    <button id="logout" onclick="logout()">Logout</button>
+  </header>
+  <table>
+    <thead><tr><th>Hostname</th><th>CPU</th><th>Model</th><th>Last Seen</th><th>Status</th></tr></thead>
+    <tbody id="machines"></tbody>
+  </table>
+</div>
+
+<div id="detail">
+  <span class="close" onclick="closeDetail()">✕</span>
+  <h2 id="detail-hostname"></h2>
+  <div id="detail-hw"></div>
+  <h3 style="margin:1rem 0 .5rem;color:#94a3b8">Recent Events</h3>
+  <div id="detail-events"></div>
+</div>
+
+<script>
+  let token = localStorage.getItem('token');
+  if (token) showDashboard();
+
+  async function login(e) {
+    e.preventDefault();
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: document.getElementById('password').value })
+    });
+    if (!res.ok) { document.getElementById('error').textContent = 'Invalid password'; return; }
+    token = (await res.json()).token;
+    localStorage.setItem('token', token);
+    showDashboard();
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    token = null;
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('login').style.display = 'flex';
+  }
+
+  async function showDashboard() {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadMachines();
+    setInterval(loadMachines, 30000);
+  }
+
+  async function loadMachines() {
+    const res = await fetch('/api/machines', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) { logout(); return; }
+    const machines = await res.json();
+    document.getElementById('machines').innerHTML = machines.map(m => {
+      const age = (Date.now() - new Date(m.last_seen)) / 60000;
+      const status = age < 70 ? '<span class="online">● Online</span>' : age < 1440 ? '<span class="stale">● Stale</span>' : '<span class="offline">● Offline</span>';
+      return `<tr onclick="showDetail('${m.id}')">
+        <td>${m.hostname}</td>
+        <td>${m.hardware?.cpu || '—'}</td>
+        <td>${m.hardware?.model || '—'}</td>
+        <td>${new Date(m.last_seen).toLocaleString()}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function showDetail(id) {
+    const res = await fetch(`/api/machines/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const m = await res.json();
+    document.getElementById('detail-hostname').textContent = m.hostname;
+    const hw = m.hardware || {};
+    document.getElementById('detail-hw').innerHTML = Object.entries(hw).map(([k, v]) =>
+      `<div class="hw-row"><span>${k}</span><span>${v}</span></div>`).join('');
+    document.getElementById('detail-events').innerHTML = (m.events || []).map(e =>
+      `<div class="event"><div class="evt-time">${e.time}</div><div>${e.message}</div></div>`).join('') || '<p style="color:#94a3b8">No events</p>';
+    document.getElementById('detail').style.display = 'block';
+  }
+
+  function closeDetail() { document.getElementById('detail').style.display = 'none'; }
+</script>
+</body>
+</html>
