@@ -71,6 +71,9 @@
 <div id="detail">
   <span class="close" onclick="closeDetail()">✕</span>
   <h2 id="detail-hostname"></h2>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
+    <button class="danger" onclick="deleteMachine()">Delete Machine</button>
+  </div>
   <div style="margin-bottom:1rem">
     <label style="font-size:.8rem;color:#94a3b8">Assign to customer</label>
     <select id="detail-customer" onchange="assignCustomer()"></select>
@@ -214,6 +217,13 @@
   }
 
   function closeDetail() { document.getElementById('detail').style.display = 'none'; }
+
+  async function deleteMachine() {
+    if (!confirm('Remove this machine from the dashboard?')) return;
+    await api(`/api/machines/${currentMachineId}`, { method: 'DELETE' });
+    closeDetail();
+    await loadAll();
+  }
 
   function openNewCustomer() { document.getElementById('customer-modal').classList.add('open'); }
   function closeModal() {

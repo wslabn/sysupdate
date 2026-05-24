@@ -2,7 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, deleteCustomer, assignMachine } from './db.js';
+import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, deleteCustomer, assignMachine, deleteMachine } from './db.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -47,6 +47,10 @@ app.patch('/api/machines/:id', auth, (req, res) => {
   const m = assignMachine(req.params.id, req.body.customer_id);
   if (!m) return res.status(404).json({ error: 'Not found' });
   res.json(m);
+});
+app.delete('/api/machines/:id', auth, (req, res) => {
+  deleteMachine(req.params.id);
+  res.json({ ok: true });
 });
 
 // Customers

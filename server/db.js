@@ -60,3 +60,9 @@ export function assignMachine(machineId, customerId) {
   db.write();
   return db.data.machines[machineId];
 }
+
+export function deleteMachine(id) {
+  db.read();
+  delete db.data.machines[id];
+  db.write();
+}
