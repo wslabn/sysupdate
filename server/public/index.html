@@ -31,14 +31,17 @@
     td { padding: .65rem 1rem; border-top: 1px solid #334155; font-size: .85rem; }
     tr:hover td { background: #263548; cursor: pointer; }
     .online { color: #4ade80; } .stale { color: #facc15; } .offline { color: #f87171; }
-    #detail { display: none; position: fixed; top: 0; right: 0; width: 420px; height: 100vh;
+    #detail { display: none; position: fixed; top: 0; right: 0; width: 580px; height: 100vh;
       background: #1e293b; padding: 2rem; overflow-y: auto; border-left: 1px solid #334155; }
     #detail h2 { color: #38bdf8; margin-bottom: 1rem; }
     #detail .close { float: right; cursor: pointer; color: #94a3b8; font-size: 1.2rem; }
-    .hw-row { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid #334155; font-size: .85rem; }
-    .hw-row span:first-child { color: #94a3b8; }
-    .event { background: #0f172a; padding: .5rem; border-radius: 4px; margin-bottom: .5rem; font-size: .8rem; }
-    .event .evt-time { color: #94a3b8; }
+    #detail h3 { color: #94a3b8; font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; margin: 1.25rem 0 .5rem; }
+    .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+    .hw-row { display: flex; flex-direction: column; background: #0f172a; padding: .5rem .75rem; border-radius: 4px; font-size: .8rem; }
+    .hw-row span:first-child { color: #94a3b8; font-size: .7rem; margin-bottom: .15rem; }
+    .event { background: #0f172a; padding: .75rem; border-radius: 4px; margin-bottom: .5rem; border-left: 3px solid #ef4444; }
+    .event .evt-meta { display: flex; gap: 1rem; margin-bottom: .35rem; font-size: .75rem; color: #94a3b8; }
+    .event .evt-msg { font-size: .82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     #error { color: #f87171; margin-top: .5rem; font-size: .85rem; }
     .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
     .modal-bg.open { display: flex; }
@@ -85,7 +88,7 @@
     <select id="detail-customer" onchange="assignCustomer()"></select>
   </div>
   <div id="detail-hw"></div>
-  <h3 style="margin:1rem 0 .5rem;color:#94a3b8">Recent Events</h3>
+  <h3>Recent Error Events</h3>
   <div id="detail-events"></div>
 </div>
 
@@ -223,13 +226,20 @@
     const sel = document.getElementById('detail-customer');
     sel.innerHTML = `<option value="">— Unassigned —</option>` +
       customers.map(c => `<option value="${c.id}" ${m.customer_id === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
-    // Hardware
-    document.getElementById('detail-hw').innerHTML = Object.entries(m.hardware || {})
-      .map(([k, v]) => `<div class="hw-row"><span>${k}</span><span>${v}</span></div>`).join('');
+    // Hardware - grid layout
+    document.getElementById('detail-hw').innerHTML =
+      `<h3>Hardware</h3><div class="hw-grid">` +
+      Object.entries(m.hardware || {}).map(([k, v]) =>
+        `<div class="hw-row"><span>${k}</span><span>${v}</span></div>`
+      ).join('') + '</div>';
     // Events
-    document.getElementById('detail-events').innerHTML = (m.events || []).map(e =>
-      `<div class="event"><div class="evt-time">${e.time}</div><div>${e.message}</div></div>`
-    ).join('') || '<p style="color:#94a3b8">No events</p>';
+    const events = m.events || [];
+    document.getElementById('detail-events').innerHTML = events.length
+      ? events.map(e => `<div class="event">
+          <div class="evt-meta"><span>🕐 ${e.time}</span><span>📋 ${e.source || ''}</span><span>ID: ${e.id || ''}</span></div>
+          <div class="evt-msg">${e.message}</div>
+        </div>`).join('')
+      : '<p style="color:#94a3b8;font-size:.85rem">No events recorded</p>';
     document.getElementById('detail').style.display = 'block';
   }
 
