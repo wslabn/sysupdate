@@ -63,6 +63,9 @@
   <header>
     <h1>SysUpdate Dashboard</h1>
     <div class="toolbar">
+      <select id="jump" onchange="jumpTo(this)" style="width:180px;margin-bottom:0">
+        <option value="">Jump to customer...</option>
+      </select>
       <button class="secondary" onclick="openNewCustomer()">+ Customer</button>
       <button class="secondary" onclick="logout()">Logout</button>
     </div>
@@ -194,6 +197,22 @@
     const unassigned = machines.filter(m => !assigned.has(m.id));
     html += groupBlock('Unassigned', unassigned, null);
     document.getElementById('groups').innerHTML = html;
+
+    // Update jump dropdown
+    const jump = document.getElementById('jump');
+    jump.innerHTML = '<option value="">Jump to customer...</option>' +
+      customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('') +
+      '<option value="unassigned">Unassigned</option>';
+  }
+
+  function jumpTo(sel) {
+    if (!sel.value) return;
+    const el = document.querySelector(`.customer-group[data-id="${sel.value}"]`);
+    if (!el) return;
+    // Expand if collapsed
+    if (el.classList.contains('collapsed')) el.querySelector('.customer-header').click();
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    sel.value = '';
   }
 
   async function showDetail(id) {
