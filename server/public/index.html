@@ -88,6 +88,8 @@
     <select id="detail-customer" onchange="assignCustomer()"></select>
   </div>
   <div id="detail-hw"></div>
+  <h3>Driver Updates</h3>
+  <div id="detail-driver-update"></div>
   <h3>Recent Error Events</h3>
   <div id="detail-events"></div>
 </div>
@@ -240,6 +242,17 @@
           <div class="evt-msg">${e.message}</div>
         </div>`).join('')
       : '<p style="color:#94a3b8;font-size:.85rem">No events recorded</p>';
+
+    // Driver update status
+    const du = m.driverUpdate;
+    const duHtml = du
+      ? `<div style="background:#0f172a;padding:.75rem;border-radius:4px;border-left:3px solid ${du.status==='updated'?'#4ade80':'#38bdf8'}">
+          <div style="font-size:.75rem;color:#94a3b8;margin-bottom:.35rem">${du.timestamp}</div>
+          <div style="font-size:.85rem">${du.status === 'updated' ? '[OK] Drivers updated' : 'All drivers current'}</div>
+          ${du.installed?.length ? '<div style="margin-top:.35rem;font-size:.78rem;color:#94a3b8">' + du.installed.join('<br>') + '</div>' : ''}
+        </div>`
+      : '<p style="color:#94a3b8;font-size:.85rem">No update run yet</p>';
+    document.getElementById('detail-driver-update').innerHTML = duHtml;
     document.getElementById('detail').style.display = 'block';
   }
 
