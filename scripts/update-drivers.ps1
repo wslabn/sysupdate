@@ -2,7 +2,6 @@
 
 Write-Host "`n=== SysUpdate Driver Updater ===" -ForegroundColor Cyan
 
-# Install PSWindowsUpdate module if not present
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
     Write-Host "Installing PSWindowsUpdate module..." -ForegroundColor Yellow
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
@@ -11,12 +10,11 @@ if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
 
 Import-Module PSWindowsUpdate
 
-# Show available driver updates
 Write-Host "`nChecking for driver updates..." -ForegroundColor Yellow
 $drivers = Get-WindowsUpdate -Category Drivers -NotCategory "Preview" -ErrorAction SilentlyContinue
 
 if (-not $drivers) {
-    Write-Host "No driver updates available. System is up to date." -ForegroundColor Green
+    Write-Host "System is up to date. No driver updates available." -ForegroundColor Green
     exit
 }
 
@@ -26,17 +24,21 @@ $drivers | ForEach-Object { Write-Host "  - $($_.Title)" }
 Write-Host "`nDownloading and installing..." -ForegroundColor Yellow
 $results = Install-WindowsUpdate -Category Drivers -NotCategory "Preview" -AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue
 
-Write-Host "`nResults:" -ForegroundColor Cyan
-$results | ForEach-Object {
-    $status = if ($_.Result -eq 'Succeeded') { "[OK]" } else { "[FAIL]" }
-    Write-Host "  $status $($_.Title)" -ForegroundColor $(if ($_.Result -eq 'Succeeded') { 'Green' } else { 'Red' })
+$succeeded = @($results | Where-Object { $_.Result -eq 'Succeeded' })
+$failed    = @($results | Where-Object { $_.Result -ne 'Succeeded' })
+
+if ($succeeded.Count -gt 0) {
+    Write-Host "`nInstalled:" -ForegroundColor Green
+    $succeeded | ForEach-Object { Write-Host "  [OK] $($_.Title)" -ForegroundColor Green }
 }
 
-$needsReboot = Get-WURebootStatus -Silent
-if ($needsReboot) {
-    Write-Host "`nA reboot is required to complete installation." -ForegroundColor Yellow
-    $choice = Read-Host "Reboot now? (y/n)"
+if ($succeeded.Count -eq 0 -and $failed.Count -gt 0) {
+    Write-Host "`nAll drivers are already current." -ForegroundColor Green
+}
+
+if (Get-WURebootStatus -Silent) {
+    $choice = Read-Host "`nReboot required to complete installation. Reboot now? (y/n)"
     if ($choice -eq 'y') { Restart-Computer -Force }
 } else {
-    Write-Host "`nAll drivers installed successfully. No reboot required." -ForegroundColor Green
+    Write-Host "`nDone. No reboot required." -ForegroundColor Green
 }
