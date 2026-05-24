@@ -9,15 +9,23 @@
     #login { display: flex; align-items: center; justify-content: center; height: 100vh; }
     #login form { background: #1e293b; padding: 2rem; border-radius: 8px; width: 300px; }
     #login h2 { margin-bottom: 1.5rem; color: #38bdf8; }
-    input { width: 100%; padding: .6rem; margin-bottom: 1rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; }
-    button { width: 100%; padding: .6rem; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    input, select { width: 100%; padding: .6rem; margin-bottom: 1rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; }
+    button { padding: .5rem 1rem; background: #38bdf8; color: #0f172a; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    button.danger { background: #ef4444; color: #fff; }
+    button.full { width: 100%; }
     #dashboard { display: none; padding: 2rem; }
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
     header h1 { color: #38bdf8; }
-    #logout { width: auto; padding: .4rem 1rem; background: #334155; color: #e2e8f0; }
-    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
-    th { background: #334155; padding: .75rem 1rem; text-align: left; font-size: .85rem; color: #94a3b8; }
-    td { padding: .75rem 1rem; border-top: 1px solid #334155; font-size: .9rem; }
+    .toolbar { display: flex; gap: .5rem; align-items: center; }
+    .customer-group { background: #1e293b; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+    .customer-header { display: flex; justify-content: space-between; align-items: center;
+      padding: .75rem 1rem; background: #334155; }
+    .customer-header h3 { font-size: .95rem; }
+    .customer-header span { color: #94a3b8; font-size: .8rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: .6rem 1rem; text-align: left; font-size: .8rem; color: #94a3b8; background: #1e293b; }
+    td { padding: .65rem 1rem; border-top: 1px solid #334155; font-size: .85rem; }
     tr:hover td { background: #263548; cursor: pointer; }
     .online { color: #4ade80; } .stale { color: #facc15; } .offline { color: #f87171; }
     #detail { display: none; position: fixed; top: 0; right: 0; width: 420px; height: 100vh;
@@ -29,6 +37,12 @@
     .event { background: #0f172a; padding: .5rem; border-radius: 4px; margin-bottom: .5rem; font-size: .8rem; }
     .event .evt-time { color: #94a3b8; }
     #error { color: #f87171; margin-top: .5rem; font-size: .85rem; }
+    .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
+    .modal-bg.open { display: flex; }
+    .modal { background: #1e293b; padding: 1.5rem; border-radius: 8px; width: 340px; }
+    .modal h3 { margin-bottom: 1rem; color: #38bdf8; }
+    .modal-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+    .empty { padding: 1rem; color: #94a3b8; font-size: .85rem; text-align: center; }
   </style>
 </head>
 <body>
@@ -37,7 +51,7 @@
   <form onsubmit="login(event)">
     <h2>SysUpdate</h2>
     <input type="password" id="password" placeholder="Password" required>
-    <button type="submit">Login</button>
+    <button type="submit" class="full">Login</button>
     <div id="error"></div>
   </form>
 </div>
@@ -45,31 +59,57 @@
 <div id="dashboard">
   <header>
     <h1>SysUpdate Dashboard</h1>
-    <button id="logout" onclick="logout()">Logout</button>
+    <div class="toolbar">
+      <button class="secondary" onclick="openNewCustomer()">+ Customer</button>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </div>
   </header>
-  <table>
-    <thead><tr><th>Hostname</th><th>CPU</th><th>Model</th><th>Last Seen</th><th>Status</th></tr></thead>
-    <tbody id="machines"></tbody>
-  </table>
+  <div id="groups"></div>
 </div>
 
+<!-- Machine detail panel -->
 <div id="detail">
   <span class="close" onclick="closeDetail()">✕</span>
   <h2 id="detail-hostname"></h2>
+  <div style="margin-bottom:1rem">
+    <label style="font-size:.8rem;color:#94a3b8">Assign to customer</label>
+    <select id="detail-customer" onchange="assignCustomer()"></select>
+  </div>
   <div id="detail-hw"></div>
   <h3 style="margin:1rem 0 .5rem;color:#94a3b8">Recent Events</h3>
   <div id="detail-events"></div>
 </div>
 
+<!-- New customer modal -->
+<div class="modal-bg" id="customer-modal">
+  <div class="modal">
+    <h3>New Customer</h3>
+    <input type="text" id="customer-name" placeholder="Customer name">
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button onclick="createCustomer()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let token = localStorage.getItem('token');
+  let customers = [], machines = [], currentMachineId = null;
   if (token) showDashboard();
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...opts.headers }
+    });
+    if (res.status === 401) { logout(); return; }
+    return res.json();
+  }
 
   async function login(e) {
     e.preventDefault();
     const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: document.getElementById('password').value })
     });
     if (!res.ok) { document.getElementById('error').textContent = 'Invalid password'; return; }
@@ -79,8 +119,7 @@
   }
 
   function logout() {
-    localStorage.removeItem('token');
-    token = null;
+    localStorage.removeItem('token'); token = null;
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('login').style.display = 'flex';
   }
@@ -88,40 +127,114 @@
   async function showDashboard() {
     document.getElementById('login').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
-    loadMachines();
-    setInterval(loadMachines, 30000);
+    await loadAll();
+    setInterval(loadAll, 30000);
   }
 
-  async function loadMachines() {
-    const res = await fetch('/api/machines', { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) { logout(); return; }
-    const machines = await res.json();
-    document.getElementById('machines').innerHTML = machines.map(m => {
-      const age = (Date.now() - new Date(m.last_seen)) / 60000;
-      const status = age < 70 ? '<span class="online">● Online</span>' : age < 1440 ? '<span class="stale">● Stale</span>' : '<span class="offline">● Offline</span>';
-      return `<tr onclick="showDetail('${m.id}')">
-        <td>${m.hostname}</td>
-        <td>${m.hardware?.cpu || '—'}</td>
-        <td>${m.hardware?.model || '—'}</td>
-        <td>${new Date(m.last_seen).toLocaleString()}</td>
-        <td>${status}</td>
-      </tr>`;
+  async function loadAll() {
+    [customers, machines] = await Promise.all([api('/api/customers'), api('/api/machines')]);
+    renderGroups();
+  }
+
+  function status(last_seen) {
+    const age = (Date.now() - new Date(last_seen)) / 60000;
+    if (age < 70) return '<span class="online">● Online</span>';
+    if (age < 1440) return '<span class="stale">● Stale</span>';
+    return '<span class="offline">● Offline</span>';
+  }
+
+  function machineRow(m) {
+    return `<tr onclick="showDetail('${m.id}')">
+      <td>${m.hostname}</td>
+      <td>${m.hardware?.cpu || '—'}</td>
+      <td>${m.hardware?.model || '—'}</td>
+      <td>${new Date(m.last_seen).toLocaleString()}</td>
+      <td>${status(m.last_seen)}</td>
+    </tr>`;
+  }
+
+  function groupBlock(title, machineList, customerId) {
+    const deleteBtn = customerId
+      ? `<button class="danger" style="padding:.25rem .6rem;font-size:.75rem" onclick="removeCustomer('${customerId}',event)">Delete</button>`
+      : '';
+    const rows = machineList.length
+      ? machineList.map(machineRow).join('')
+      : `<tr><td colspan="5" class="empty">No machines assigned</td></tr>`;
+    return `<div class="customer-group">
+      <div class="customer-header">
+        <h3>${title}</h3>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <span>${machineList.length} machine${machineList.length !== 1 ? 's' : ''}</span>
+          ${deleteBtn}
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Hostname</th><th>CPU</th><th>Model</th><th>Last Seen</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function renderGroups() {
+    const assigned = new Set();
+    let html = customers.map(c => {
+      const list = machines.filter(m => m.customer_id === c.id);
+      list.forEach(m => assigned.add(m.id));
+      return groupBlock(c.name, list, c.id);
     }).join('');
+    const unassigned = machines.filter(m => !assigned.has(m.id));
+    html += groupBlock('Unassigned', unassigned, null);
+    document.getElementById('groups').innerHTML = html;
   }
 
   async function showDetail(id) {
-    const res = await fetch(`/api/machines/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-    const m = await res.json();
+    currentMachineId = id;
+    const m = await api(`/api/machines/${id}`);
     document.getElementById('detail-hostname').textContent = m.hostname;
-    const hw = m.hardware || {};
-    document.getElementById('detail-hw').innerHTML = Object.entries(hw).map(([k, v]) =>
-      `<div class="hw-row"><span>${k}</span><span>${v}</span></div>`).join('');
+    // Customer select
+    const sel = document.getElementById('detail-customer');
+    sel.innerHTML = `<option value="">— Unassigned —</option>` +
+      customers.map(c => `<option value="${c.id}" ${m.customer_id === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+    // Hardware
+    document.getElementById('detail-hw').innerHTML = Object.entries(m.hardware || {})
+      .map(([k, v]) => `<div class="hw-row"><span>${k}</span><span>${v}</span></div>`).join('');
+    // Events
     document.getElementById('detail-events').innerHTML = (m.events || []).map(e =>
-      `<div class="event"><div class="evt-time">${e.time}</div><div>${e.message}</div></div>`).join('') || '<p style="color:#94a3b8">No events</p>';
+      `<div class="event"><div class="evt-time">${e.time}</div><div>${e.message}</div></div>`
+    ).join('') || '<p style="color:#94a3b8">No events</p>';
     document.getElementById('detail').style.display = 'block';
   }
 
+  async function assignCustomer() {
+    const customerId = document.getElementById('detail-customer').value || null;
+    await api(`/api/machines/${currentMachineId}`, {
+      method: 'PATCH', body: JSON.stringify({ customer_id: customerId })
+    });
+    await loadAll();
+  }
+
   function closeDetail() { document.getElementById('detail').style.display = 'none'; }
+
+  function openNewCustomer() { document.getElementById('customer-modal').classList.add('open'); }
+  function closeModal() {
+    document.getElementById('customer-modal').classList.remove('open');
+    document.getElementById('customer-name').value = '';
+  }
+
+  async function createCustomer() {
+    const name = document.getElementById('customer-name').value.trim();
+    if (!name) return;
+    await api('/api/customers', { method: 'POST', body: JSON.stringify({ name }) });
+    closeModal();
+    await loadAll();
+  }
+
+  async function removeCustomer(id, e) {
+    e.stopPropagation();
+    if (!confirm('Delete this customer? Machines will become unassigned.')) return;
+    await api(`/api/customers/${id}`, { method: 'DELETE' });
+    await loadAll();
+  }
 </script>
 </body>
 </html>
