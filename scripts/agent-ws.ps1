@@ -25,7 +25,7 @@ function Connect-Agent {
             $buffer = New-Object byte[] 4096
 
             while ($ws.State -eq 'Open') {
-                $seg = New-Object ArraySegment[byte] $buffer
+                $seg = New-Object System.ArraySegment[byte](,$buffer)
                 $result = $ws.ReceiveAsync($seg, [Threading.CancellationToken]::None).Result
 
                 if ($result.MessageType -eq 'Close') { break }
@@ -51,7 +51,7 @@ function Connect-Agent {
                             $line = $stream.ReadLine()
                             if ($websocket.State -eq 'Open') {
                                 $bytes = [Text.Encoding]::UTF8.GetBytes("$line`r`n")
-                                $seg = New-Object ArraySegment[byte] $bytes
+                                $seg = New-Object System.ArraySegment[byte](,$bytes)
                                 $websocket.SendAsync($seg, 'Text', $true, [Threading.CancellationToken]::None).Wait()
                             }
                         }
