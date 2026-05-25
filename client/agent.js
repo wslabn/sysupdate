@@ -8,6 +8,7 @@ const path = require('path');
 const SERVER_URL = 'ws://192.168.200.146:3000';
 const DATA_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate');
 const ID_FILE = path.join(DATA_DIR, 'machine-id');
+const CLIENT_VERSION = require('./package.json').version;
 
 class Agent extends EventEmitter {
   constructor() {
@@ -141,7 +142,8 @@ $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -Ma
         hardware,
         events,
         disks,
-        diagnostics
+        diagnostics,
+        clientVersion: CLIENT_VERSION
       });
 
       const http = require('http');

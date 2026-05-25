@@ -32,9 +32,9 @@ app.post('/api/login', (req, res) => {
 
 // Agent check-in — also returns pending command
 app.post('/api/checkin', (req, res) => {
-  const { machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics } = req.body;
+  const { machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics, clientVersion } = req.body;
   if (!machineId || !hostname) return res.status(400).json({ error: 'Missing fields' });
-  upsertMachine(machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics);
+  upsertMachine(machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics, clientVersion);
   const command = popCommand(machineId);
   res.json({ ok: true, command });
 });

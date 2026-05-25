@@ -112,6 +112,7 @@
   <div id="detail-top">
     <span class="close" onclick="closeDetail()">&#x2715;</span>
     <h2 id="detail-hostname"></h2>
+    <div id="detail-version" style="font-size:.75rem;color:#94a3b8;margin-bottom:.75rem"></div>
     <div class="detail-actions">
       <button onclick="openTerminal()">Terminal</button>
       <button onclick="sendCommand('update-drivers')">Update Drivers</button>
@@ -313,6 +314,7 @@
     currentMachineId = id;
     const m = await api(`/api/machines/${id}`);
     document.getElementById('detail-hostname').textContent = m.hostname;
+    document.getElementById('detail-version').textContent = m.clientVersion ? `Client v${m.clientVersion}` : 'Version unknown';
 
     // Customer select
     const sel = document.getElementById('detail-customer');

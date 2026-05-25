@@ -11,7 +11,7 @@ db.data.machines ??= {};
 db.data.customers ??= {};
 db.write();
 
-export function upsertMachine(id, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics) {
+export function upsertMachine(id, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics, clientVersion) {
   db.read();
   const existing = db.data.machines[id] || {};
   db.data.machines[id] = {
@@ -23,6 +23,7 @@ export function upsertMachine(id, hostname, hardware, events, customerId, driver
     ...(windowsUpdate && { windowsUpdate }),
     ...(disks && { disks }),
     ...(diagnostics && { diagnostics }),
+    ...(clientVersion && { clientVersion }),
   };
   db.write();
 }
