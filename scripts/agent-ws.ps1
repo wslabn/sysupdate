@@ -66,7 +66,7 @@ function Connect-Agent {
                 $ps.StandardInput.WriteLine($input)
             }
         } catch {
-            Write-Host "Connection error: $_ — reconnecting in 10s"
+            Write-Host "Connection error: $_ - reconnecting in 10s"
         } finally {
             if ($ps -and -not $ps.HasExited) { $ps.Kill() }
             if ($ws.State -eq 'Open') { $ws.CloseAsync('NormalClosure', '', [Threading.CancellationToken]::None).Wait() }
