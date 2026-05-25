@@ -95,6 +95,7 @@
   <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem;gap:.5rem">
     <button onclick="openTerminal()">Terminal</button>
     <button onclick="sendCommand('update-drivers')">Run Driver Update</button>
+    <button onclick="sendCommand('update-client')">Push Client Update</button>
     <button class="danger" onclick="sendCommand('reboot')">Reboot</button>
     <button class="danger" onclick="deleteMachine()">Delete</button>
   </div>
@@ -346,10 +347,10 @@
   }
 
   async function sendCommand(command) {
-    const label = command === 'reboot' ? 'reboot this machine' : 'run a driver update';
-    if (!confirm(`Send command to ${label}? It will execute on the next agent check-in.`)) return;
+    const labels = { reboot: 'reboot this machine', 'update-drivers': 'run a driver update', 'update-client': 'push a client update' };
+    if (!confirm(`Send command to ${labels[command]}?`)) return;
     await api(`/api/machines/${currentMachineId}/command`, { method: 'POST', body: JSON.stringify({ command }) });
-    alert(`Command queued. Will execute within the hour.`);
+    alert(command === 'update-client' ? 'Update command sent. Client will download and reinstall.' : 'Command queued.');
   }
 
   function openNewCustomer() { document.getElementById('customer-modal').classList.add('open'); }

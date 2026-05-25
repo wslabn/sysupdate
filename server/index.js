@@ -59,8 +59,18 @@ app.delete('/api/machines/:id', auth, (req, res) => {
 // Queue a command for a machine
 app.post('/api/machines/:id/command', auth, (req, res) => {
   const { command } = req.body;
-  if (!['reboot', 'update-drivers'].includes(command))
+  if (!['reboot', 'update-drivers', 'update-client'].includes(command))
     return res.status(400).json({ error: 'Invalid command' });
+
+  // update-client is sent directly via WebSocket
+  if (command === 'update-client') {
+    const agentWs = agents.get(req.params.id);
+    if (!agentWs || agentWs.readyState !== 1)
+      return res.status(404).json({ error: 'Agent offline' });
+    agentWs.send('__UPDATE__');
+    return res.json({ ok: true, command });
+  }
+
   const result = queueCommand(req.params.id, command);
   if (!result) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true, command });
