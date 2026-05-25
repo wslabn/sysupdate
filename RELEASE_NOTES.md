@@ -1,8 +1,5 @@
-## What's New in v1.2.1
+## What's New in v1.2.2
 
 ### Fixes
-- Reboot command now executes immediately via WebSocket (no longer waits for hourly poll)
-- Update Drivers command now executes immediately via WebSocket
-- Client restarts automatically after push update
-- Client logging with daily rotation (14-day retention)
-- "View Logs" option in tray menu
+- Client now starts at system boot (ONSTART) instead of user login (ONLOGON)
+- Allows remote access even when no user is logged in

