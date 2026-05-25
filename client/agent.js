@@ -102,17 +102,27 @@ $hw = @{
   os_version = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').DisplayVersion
   os_build = (Get-CimInstance Win32_OperatingSystem).BuildNumber
 }
-$hw | ConvertTo-Json
+
+$events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -MaxEvents 10 -ErrorAction SilentlyContinue | ForEach-Object {
+  @{ time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm'); source = $_.ProviderName; id = $_.Id; message = ($_.Message -replace "\r\n"," ") }
+}
+
+@{ hardware = $hw; events = @($events) } | ConvertTo-Json -Depth 5
 `;
     fs.writeFileSync(script, ps);
     exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${script}"`, (err, stdout) => {
-      let hardware = {};
-      try { hardware = JSON.parse(stdout); } catch {}
+      let hardware = {}, events = [];
+      try {
+        const result = JSON.parse(stdout);
+        hardware = result.hardware || {};
+        events = result.events || [];
+      } catch {}
 
       const payload = JSON.stringify({
         machineId: this.machineId,
         hostname: os.hostname(),
-        hardware
+        hardware,
+        events
       });
 
       const http = require('http');
