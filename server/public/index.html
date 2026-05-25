@@ -105,6 +105,10 @@
   <div id="detail-hw"></div>
   <h3>Windows Updates</h3>
   <div id="detail-wu"></div>
+  <h3>Disk Space</h3>
+  <div id="detail-disks"></div>
+  <h3>Diagnostics</h3>
+  <div id="detail-diag"></div>
   <h3>Driver Updates</h3>
   <div id="detail-driver-update"></div>
   <h3>Recent Error Events</h3>
@@ -280,6 +284,28 @@
           <div style="font-size:.85rem">${wu.missing > 0 ? wu.missing + ' update(s) pending' : 'Up to date'}</div>
           <div style="font-size:.75rem;color:#94a3b8;margin-top:.25rem">Last installed: ${wu.last_install}</div>
         </div>`
+      : '<p style="color:#94a3b8;font-size:.85rem">No data yet</p>';
+
+    // Disks
+    const disks = m.disks || [];
+    document.getElementById('detail-disks').innerHTML = disks.length
+      ? disks.map(d => `<div style="background:#0f172a;padding:.75rem;border-radius:4px;margin-bottom:.5rem;border-left:3px solid ${d.percent_free < 10 ? '#ef4444' : d.percent_free < 25 ? '#facc15' : '#4ade80'}">
+          <div style="font-size:.85rem">${d.drive} &mdash; ${d.free_gb} GB free / ${d.size_gb} GB (${d.percent_free}% free)</div>
+        </div>`).join('')
+      : '<p style="color:#94a3b8;font-size:.85rem">No data yet</p>';
+
+    // Diagnostics
+    const diag = m.diagnostics;
+    document.getElementById('detail-diag').innerHTML = diag
+      ? `<div class="hw-grid">
+          <div class="hw-row"><span>Uptime</span><span>${diag.uptime_hours}h</span></div>
+          <div class="hw-row"><span>Last Boot</span><span>${diag.last_boot}</span></div>
+          <div class="hw-row"><span>Pending Reboot</span><span style="color:${diag.pending_reboot ? '#ef4444' : '#4ade80'}">${diag.pending_reboot ? 'Yes' : 'No'}</span></div>
+        </div>
+        ${diag.network_adapters ? '<div style="margin-top:.5rem">' + diag.network_adapters.map(n =>
+          `<div style="background:#0f172a;padding:.5rem .75rem;border-radius:4px;margin-bottom:.35rem;font-size:.8rem">
+            <span style="color:#94a3b8">${n.name}</span><br>${n.ip || 'No IP'} &mdash; ${n.mac || ''}
+          </div>`).join('') + '</div>' : ''}`
       : '<p style="color:#94a3b8;font-size:.85rem">No data yet</p>';
     const du = m.driverUpdate;
     const duHtml = du

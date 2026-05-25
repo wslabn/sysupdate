@@ -103,26 +103,45 @@ $hw = @{
   os_build = (Get-CimInstance Win32_OperatingSystem).BuildNumber
 }
 
+$disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+  @{ drive = $_.DeviceID; size_gb = [math]::Round($_.Size / 1GB, 1); free_gb = [math]::Round($_.FreeSpace / 1GB, 1); percent_free = [math]::Round(($_.FreeSpace / $_.Size) * 100, 1) }
+}
+
+$uptime = (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+$diag = @{
+  uptime_hours = [math]::Round($uptime.TotalHours, 1)
+  cpu_temp = $null
+  last_boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('yyyy-MM-dd HH:mm')
+  pending_reboot = (Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending')
+  network_adapters = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" | ForEach-Object {
+    @{ name = $_.Description; ip = ($_.IPAddress | Select -First 1); mac = $_.MACAddress }
+  })
+}
+
 $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -MaxEvents 10 -ErrorAction SilentlyContinue | ForEach-Object {
   @{ time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm'); source = $_.ProviderName; id = $_.Id; message = ($_.Message -replace "\r\n"," ") }
 }
 
-@{ hardware = $hw; events = @($events) } | ConvertTo-Json -Depth 5
+@{ hardware = $hw; disks = @($disks); diagnostics = $diag; events = @($events) } | ConvertTo-Json -Depth 5
 `;
     fs.writeFileSync(script, ps);
     exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${script}"`, (err, stdout) => {
-      let hardware = {}, events = [];
+      let hardware = {}, events = [], disks = [], diagnostics = {};
       try {
         const result = JSON.parse(stdout);
         hardware = result.hardware || {};
         events = result.events || [];
+        disks = result.disks || [];
+        diagnostics = result.diagnostics || {};
       } catch {}
 
       const payload = JSON.stringify({
         machineId: this.machineId,
         hostname: os.hostname(),
         hardware,
-        events
+        events,
+        disks,
+        diagnostics
       });
 
       const http = require('http');
