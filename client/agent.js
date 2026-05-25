@@ -4,6 +4,7 @@ const { execSync, exec } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const log = require('./logger');
 
 const SERVER_URL = 'ws://192.168.200.146:3000';
 const DATA_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate');
@@ -40,6 +41,7 @@ class Agent extends EventEmitter {
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {
+      log.info('WebSocket connected');
       this.emit('connected');
       if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
       this.checkIn();
@@ -51,12 +53,14 @@ class Agent extends EventEmitter {
     });
 
     this.ws.on('close', () => {
+      log.warn('WebSocket disconnected');
       this.emit('disconnected');
       this._stopCheckinInterval();
       this._reconnect();
     });
 
-    this.ws.on('error', () => {
+    this.ws.on('error', (err) => {
+      log.error(`WebSocket error: ${err.message}`);
       this.emit('disconnected');
       this._stopCheckinInterval();
       this._reconnect();
@@ -151,12 +155,15 @@ $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -Ma
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
+      req.on('error', (e) => log.error(`Check-in failed: ${e.message}`));
       req.write(payload);
       req.end();
+      log.info('Check-in sent');
     });
   }
 
   updateDrivers() {
+    log.info('Running driver update');
     this.emit('command', 'update-drivers');
     exec('powershell -ExecutionPolicy Bypass -File "' +
       path.join(process.env.ProgramFiles || 'C:\\Program Files', 'SysUpdate', 'update-drivers.ps1') + '"');

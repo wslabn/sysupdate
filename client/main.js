@@ -1,8 +1,9 @@
-const { app, Tray, Menu, Notification, nativeImage, desktopCapturer } = require('electron');
+const { app, Tray, Menu, Notification, nativeImage, shell } = require('electron');
 const path = require('path');
 const Agent = require('./agent');
 const Terminal = require('./terminal');
 const CLIENT_VERSION = require('./package.json').version;
+const LOG_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate', 'logs');
 
 // Single instance lock
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(); }
@@ -71,6 +72,7 @@ function updateMenu(status) {
     { type: 'separator' },
     { label: 'Check In Now', click: () => agent.checkIn() },
     { label: 'Update Drivers', click: () => agent.updateDrivers() },
+    { label: 'View Logs', click: () => shell.openPath(LOG_DIR) },
     { type: 'separator' },
     { label: 'Quit', click: () => { agent.disconnect(); app.quit(); } }
   ]);

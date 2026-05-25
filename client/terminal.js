@@ -2,6 +2,7 @@ const { spawn, exec } = require('child_process');
 const path = require('path');
 const https = require('https');
 const fs = require('fs');
+const log = require('./logger');
 
 class Terminal {
   constructor(agent) {
@@ -11,11 +12,15 @@ class Terminal {
     agent.on('shell-input', (data) => {
       const msg = data.toString();
       if (msg === '__UPDATE__') {
+        log.info('Received update command');
         this._selfUpdate();
       } else if (msg === '__SCREENSHOT__') {
+        log.info('Received screenshot command');
         this._takeScreenshot();
       } else if (msg.startsWith('__TOOL__')) {
-        this._runTool(msg.replace('__TOOL__', ''));
+        const tool = msg.replace('__TOOL__', '');
+        log.info(`Received tool command: ${tool}`);
+        this._runTool(tool);
       } else {
         this._ensureShell();
         this.shell.stdin.write(msg + '\n');

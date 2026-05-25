@@ -36,6 +36,7 @@
       "main.js",
       "agent.js",
       "terminal.js",
+      "logger.js",
       "assets/**"
     ]
   }
