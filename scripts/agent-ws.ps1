@@ -1,4 +1,4 @@
-# agent-ws.ps1 — Persistent WebSocket connection for remote shell
+﻿# agent-ws.ps1 — Persistent WebSocket connection for remote shell
 $ServerUrl = "ws://192.168.200.146:3000"  # Change to your server
 
 # Stable machine ID (same logic as agent.ps1)
