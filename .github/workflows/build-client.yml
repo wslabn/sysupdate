@@ -37,3 +37,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: client/dist/*.exe
+          generate_release_notes: false
+          body_path: CHANGELOG.md
