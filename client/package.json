@@ -34,7 +34,6 @@
       "main.js",
       "agent.js",
       "terminal.js",
-      "tray.js",
       "assets/**"
     ]
   }
