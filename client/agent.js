@@ -99,6 +99,8 @@ $hw = @{
   gpu = ((Get-CimInstance Win32_VideoController).Name -join ', ')
   ram_gb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
   os = (Get-CimInstance Win32_OperatingSystem).Caption
+  os_version = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').DisplayVersion
+  os_build = (Get-CimInstance Win32_OperatingSystem).BuildNumber
 }
 $hw | ConvertTo-Json
 `;
