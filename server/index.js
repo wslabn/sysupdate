@@ -2,7 +2,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, deleteCustomer, assignMachine, deleteMachine } from './db.js';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, deleteCustomer, assignMachine, deleteMachine, queueCommand, popCommand } from './db.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -28,12 +30,13 @@ app.post('/api/login', (req, res) => {
   res.json({ token: jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: '8h' }) });
 });
 
-// Agent check-in
+// Agent check-in — also returns pending command
 app.post('/api/checkin', (req, res) => {
-  const { machineId, hostname, hardware, events, customerId } = req.body;
+  const { machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate } = req.body;
   if (!machineId || !hostname) return res.status(400).json({ error: 'Missing fields' });
-  upsertMachine(machineId, hostname, hardware, events, customerId);
-  res.json({ ok: true });
+  upsertMachine(machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate);
+  const command = popCommand(machineId);
+  res.json({ ok: true, command });
 });
 
 // Machines
@@ -53,6 +56,16 @@ app.delete('/api/machines/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Queue a command for a machine
+app.post('/api/machines/:id/command', auth, (req, res) => {
+  const { command } = req.body;
+  if (!['reboot', 'update-drivers'].includes(command))
+    return res.status(400).json({ error: 'Invalid command' });
+  const result = queueCommand(req.params.id, command);
+  if (!result) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, command });
+});
+
 // Customers
 app.get('/api/customers', auth, (req, res) => res.json(getCustomers()));
 app.post('/api/customers', auth, (req, res) => {
@@ -65,5 +78,47 @@ app.delete('/api/customers/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- WebSocket remote shell relay ---
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
+
+// Connected agents keyed by machineId
+const agents = new Map();
+
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url, 'http://localhost');
+
+  if (url.pathname === '/ws/agent') {
+    // Agent identifies itself with ?id=machineId
+    const machineId = url.searchParams.get('id');
+    if (!machineId) return ws.close(4000, 'Missing id');
+    agents.set(machineId, ws);
+    ws.machineId = machineId;
+    ws.on('close', () => agents.delete(machineId));
+    ws.on('message', (data) => {
+      // Forward agent output to any linked dashboard session
+      if (ws.dashboardWs && ws.dashboardWs.readyState === 1) {
+        ws.dashboardWs.send(data.toString());
+      }
+    });
+  } else if (url.pathname === '/ws/terminal') {
+    // Dashboard terminal — requires token & machineId
+    const tokenParam = url.searchParams.get('token');
+    const machineId = url.searchParams.get('id');
+    try { jwt.verify(tokenParam, JWT_SECRET); } catch { return ws.close(4001, 'Unauthorized'); }
+    const agentWs = agents.get(machineId);
+    if (!agentWs || agentWs.readyState !== 1) return ws.close(4002, 'Agent offline');
+    // Link dashboard <-> agent
+    agentWs.dashboardWs = ws;
+    ws.on('message', (data) => {
+      if (agentWs.readyState === 1) agentWs.send(data.toString());
+    });
+    ws.on('close', () => { agentWs.dashboardWs = null; });
+    ws.send('\r\nConnected to ' + machineId + '\r\n');
+  } else {
+    ws.close(4003, 'Unknown path');
+  }
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

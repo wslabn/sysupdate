@@ -11,12 +11,16 @@ db.data.machines ??= {};
 db.data.customers ??= {};
 db.write();
 
-export function upsertMachine(id, hostname, hardware, events, customerId) {
+export function upsertMachine(id, hostname, hardware, events, customerId, driverUpdate, windowsUpdate) {
   db.read();
+  const existing = db.data.machines[id] || {};
   db.data.machines[id] = {
+    ...existing,
     id, hostname, hardware, events,
-    customer_id: customerId || null,
-    last_seen: new Date().toISOString()
+    customer_id: customerId || existing.customer_id || null,
+    last_seen: new Date().toISOString(),
+    ...(driverUpdate  && { driverUpdate }),
+    ...(windowsUpdate && { windowsUpdate }),
   };
   db.write();
 }
@@ -65,4 +69,21 @@ export function deleteMachine(id) {
   db.read();
   delete db.data.machines[id];
   db.write();
+}
+
+export function queueCommand(machineId, command) {
+  db.read();
+  if (!db.data.machines[machineId]) return null;
+  db.data.machines[machineId].pending_command = command;
+  db.write();
+}
+
+export function popCommand(machineId) {
+  db.read();
+  const cmd = db.data.machines[machineId]?.pending_command || null;
+  if (cmd) {
+    db.data.machines[machineId].pending_command = null;
+    db.write();
+  }
+  return cmd;
 }

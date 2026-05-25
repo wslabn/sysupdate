@@ -42,6 +42,18 @@
     .event { background: #0f172a; padding: .75rem; border-radius: 4px; margin-bottom: .5rem; border-left: 3px solid #ef4444; }
     .event .evt-meta { display: flex; gap: 1rem; margin-bottom: .35rem; font-size: .75rem; color: #94a3b8; }
     .event .evt-msg { font-size: .82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    #terminal-container { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: 45vh;
+      background: #0f172a; border-top: 2px solid #38bdf8; z-index: 100; flex-direction: column; }
+    #terminal-container.open { display: flex; }
+    #terminal-header { display: flex; justify-content: space-between; align-items: center;
+      padding: .5rem 1rem; background: #1e293b; }
+    #terminal-header span { color: #38bdf8; font-size: .85rem; font-weight: bold; }
+    #terminal-output { flex: 1; overflow-y: auto; padding: .75rem 1rem; font-family: 'Courier New', monospace;
+      font-size: .82rem; white-space: pre-wrap; word-break: break-all; color: #e2e8f0; }
+    #terminal-input { display: flex; border-top: 1px solid #334155; }
+    #terminal-input input { flex: 1; background: #1e293b; border: none; padding: .6rem 1rem;
+      color: #4ade80; font-family: 'Courier New', monospace; font-size: .85rem; outline: none; }
+    #terminal-input button { padding: .6rem 1rem; background: #38bdf8; color: #0f172a; border: none; font-weight: bold; cursor: pointer; }
     #error { color: #f87171; margin-top: .5rem; font-size: .85rem; }
     .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
     .modal-bg.open { display: flex; }
@@ -80,18 +92,36 @@
 <div id="detail">
   <span class="close" onclick="closeDetail()">✕</span>
   <h2 id="detail-hostname"></h2>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
-    <button class="danger" onclick="deleteMachine()">Delete Machine</button>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem;gap:.5rem">
+    <button onclick="openTerminal()">Terminal</button>
+    <button onclick="sendCommand('update-drivers')">Run Driver Update</button>
+    <button class="danger" onclick="sendCommand('reboot')">Reboot</button>
+    <button class="danger" onclick="deleteMachine()">Delete</button>
   </div>
   <div style="margin-bottom:1rem">
     <label style="font-size:.8rem;color:#94a3b8">Assign to customer</label>
     <select id="detail-customer" onchange="assignCustomer()"></select>
   </div>
   <div id="detail-hw"></div>
+  <h3>Windows Updates</h3>
+  <div id="detail-wu"></div>
   <h3>Driver Updates</h3>
   <div id="detail-driver-update"></div>
   <h3>Recent Error Events</h3>
   <div id="detail-events"></div>
+</div>
+
+<!-- Remote terminal -->
+<div id="terminal-container">
+  <div id="terminal-header">
+    <span id="terminal-title">Terminal</span>
+    <button class="danger" onclick="closeTerminal()" style="padding:.25rem .6rem;font-size:.75rem">Close</button>
+  </div>
+  <div id="terminal-output"></div>
+  <div id="terminal-input">
+    <input type="text" id="term-cmd" placeholder="Type a command..." onkeydown="if(event.key==='Enter')sendTermCmd()">
+    <button onclick="sendTermCmd()">Send</button>
+  </div>
 </div>
 
 <!-- New customer modal -->
@@ -243,7 +273,14 @@
         </div>`).join('')
       : '<p style="color:#94a3b8;font-size:.85rem">No events recorded</p>';
 
-    // Driver update status
+    // Windows Update status
+    const wu = m.windowsUpdate;
+    document.getElementById('detail-wu').innerHTML = wu
+      ? `<div style="background:#0f172a;padding:.75rem;border-radius:4px;border-left:3px solid ${wu.missing>0?'#facc15':'#4ade80'}">
+          <div style="font-size:.85rem">${wu.missing > 0 ? wu.missing + ' update(s) pending' : 'Up to date'}</div>
+          <div style="font-size:.75rem;color:#94a3b8;margin-top:.25rem">Last installed: ${wu.last_install}</div>
+        </div>`
+      : '<p style="color:#94a3b8;font-size:.85rem">No data yet</p>';
     const du = m.driverUpdate;
     const duHtml = du
       ? `<div style="background:#0f172a;padding:.75rem;border-radius:4px;border-left:3px solid ${du.status==='updated'?'#4ade80':'#38bdf8'}">
@@ -282,6 +319,13 @@
     await loadAll();
   }
 
+  async function sendCommand(command) {
+    const label = command === 'reboot' ? 'reboot this machine' : 'run a driver update';
+    if (!confirm(`Send command to ${label}? It will execute on the next agent check-in.`)) return;
+    await api(`/api/machines/${currentMachineId}/command`, { method: 'POST', body: JSON.stringify({ command }) });
+    alert(`Command queued. Will execute within the hour.`);
+  }
+
   function openNewCustomer() { document.getElementById('customer-modal').classList.add('open'); }
   function closeModal() {
     document.getElementById('customer-modal').classList.remove('open');
@@ -301,6 +345,45 @@
     if (!confirm('Delete this customer? Machines will become unassigned.')) return;
     await api(`/api/customers/${id}`, { method: 'DELETE' });
     await loadAll();
+  }
+
+  // --- Remote Terminal ---
+  let termWs = null;
+
+  function openTerminal() {
+    if (!currentMachineId) return;
+    closeTerminal();
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${proto}://${location.host}/ws/terminal?token=${token}&id=${currentMachineId}`;
+    termWs = new WebSocket(url);
+    document.getElementById('terminal-output').textContent = '';
+    document.getElementById('terminal-title').textContent = `Terminal — ${currentMachineId}`;
+    document.getElementById('terminal-container').classList.add('open');
+    document.getElementById('term-cmd').focus();
+
+    termWs.onmessage = (e) => {
+      const out = document.getElementById('terminal-output');
+      out.textContent += e.data;
+      out.scrollTop = out.scrollHeight;
+    };
+    termWs.onclose = (e) => {
+      const out = document.getElementById('terminal-output');
+      out.textContent += `\n[Disconnected: ${e.reason || 'connection closed'}]\n`;
+    };
+  }
+
+  function sendTermCmd() {
+    const input = document.getElementById('term-cmd');
+    if (!termWs || termWs.readyState !== 1 || !input.value) return;
+    const out = document.getElementById('terminal-output');
+    out.textContent += `PS> ${input.value}\n`;
+    termWs.send(input.value);
+    input.value = '';
+  }
+
+  function closeTerminal() {
+    if (termWs) { termWs.close(); termWs = null; }
+    document.getElementById('terminal-container').classList.remove('open');
   }
 </script>
 </body>
