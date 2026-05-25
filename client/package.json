@@ -22,13 +22,15 @@
     "productName": "SysUpdate",
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": true,
       "allowElevation": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "installerSidebar": null
     },
     "files": [
       "main.js",
