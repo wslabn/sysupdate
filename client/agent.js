@@ -91,17 +91,19 @@ class Agent extends EventEmitter {
   }
 
   checkIn() {
+    const script = path.join(DATA_DIR, 'checkin.ps1');
     const ps = `
-      $hw = @{
-        model = (Get-CimInstance Win32_ComputerSystem).Model
-        cpu = (Get-CimInstance Win32_Processor | Select -First 1).Name
-        gpu = ((Get-CimInstance Win32_VideoController).Name -join ', ')
-        ram_gb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
-        os = (Get-CimInstance Win32_OperatingSystem).Caption
-      }
-      $hw | ConvertTo-Json
-    `;
-    exec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, (err, stdout) => {
+$hw = @{
+  model = (Get-CimInstance Win32_ComputerSystem).Model
+  cpu = (Get-CimInstance Win32_Processor | Select -First 1).Name
+  gpu = ((Get-CimInstance Win32_VideoController).Name -join ', ')
+  ram_gb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+  os = (Get-CimInstance Win32_OperatingSystem).Caption
+}
+$hw | ConvertTo-Json
+`;
+    fs.writeFileSync(script, ps);
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${script}"`, (err, stdout) => {
       let hardware = {};
       try { hardware = JSON.parse(stdout); } catch {}
 
