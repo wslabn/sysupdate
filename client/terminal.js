@@ -123,7 +123,13 @@ Write-Output "__SCREENSHOT_READY__"
               file.on('finish', () => {
                 file.close();
                 this.agent.send('Installing update (app will restart)...\r\n');
-                exec(`"${installerPath}" /S`, () => {});
+                log.info('Installing update...');
+                const appPath = process.execPath;
+                exec(`"${installerPath}" /S`, () => {
+                  log.info('Update installed, restarting...');
+                  spawn(appPath, [], { detached: true, stdio: 'ignore' }).unref();
+                  process.exit(0);
+                });
               });
             });
           };
