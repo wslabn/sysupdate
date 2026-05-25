@@ -17,6 +17,13 @@ class Terminal {
       } else if (msg === '__SCREENSHOT__') {
         log.info('Received screenshot command');
         this._takeScreenshot();
+      } else if (msg === '__REBOOT__') {
+        log.info('Received reboot command');
+        this.agent.send('[Rebooting in 10 seconds...]\r\n');
+        exec('shutdown /r /t 10 /c "SysUpdate: Reboot requested from dashboard"');
+      } else if (msg === '__UPDATE_DRIVERS__') {
+        log.info('Received update-drivers command');
+        this._runTool('update-drivers-run');
       } else if (msg.startsWith('__TOOL__')) {
         const tool = msg.replace('__TOOL__', '');
         log.info(`Received tool command: ${tool}`);
@@ -195,6 +202,25 @@ $userTemp = Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction Silent
 $winTemp = Remove-Item -Path "C:\\Windows\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
 $prefetch = Remove-Item -Path "C:\\Windows\\Prefetch\\*" -Force -ErrorAction SilentlyContinue
 Write-Output "Temp files cleared."
+`,
+      'update-drivers-run': `
+Write-Output "Checking for driver updates..."
+if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+  Write-Output "Installing PSWindowsUpdate module..."
+  Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+  Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser
+}
+Import-Module PSWindowsUpdate
+$drivers = Get-WindowsUpdate -Category Drivers -NotCategory "Preview" -ErrorAction SilentlyContinue
+if (-not $drivers) {
+  Write-Output "All drivers are up to date."
+} else {
+  Write-Output "Installing driver updates..."
+  Install-WindowsUpdate -Category Drivers -NotCategory "Preview" -AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Output "  $($_.Title) - $($_.Result)"
+  }
+  Write-Output "Driver update complete."
+}
 `
     };
 
