@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, deleteCustomer, assignMachine, deleteMachine, queueCommand, popCommand } from './db.js';
+import { upsertMachine, getMachines, getMachine, getCustomers, createCustomer, updateCustomer, deleteCustomer, assignMachine, updateMachineNotes, addActivity, deleteMachine, queueCommand, popCommand } from './db.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -47,7 +47,13 @@ app.get('/api/machines/:id', auth, (req, res) => {
   res.json(m);
 });
 app.patch('/api/machines/:id', auth, (req, res) => {
-  const m = assignMachine(req.params.id, req.body.customer_id);
+  const { customer_id, notes } = req.body;
+  if (notes !== undefined) {
+    const m = updateMachineNotes(req.params.id, notes);
+    if (!m) return res.status(404).json({ error: 'Not found' });
+    return res.json(m);
+  }
+  const m = assignMachine(req.params.id, customer_id);
   if (!m) return res.status(404).json({ error: 'Not found' });
   res.json(m);
 });
@@ -68,20 +74,27 @@ app.post('/api/machines/:id/command', auth, (req, res) => {
     if (!agentWs || agentWs.readyState !== 1)
       return res.status(404).json({ error: 'Agent offline' });
     agentWs.send('__UPDATE__');
+    addActivity(req.params.id, 'Pushed client update');
     return res.json({ ok: true, command });
   }
 
   const result = queueCommand(req.params.id, command);
   if (!result) return res.status(404).json({ error: 'Not found' });
+  addActivity(req.params.id, `Command: ${command}`);
   res.json({ ok: true, command });
 });
 
 // Customers
 app.get('/api/customers', auth, (req, res) => res.json(getCustomers()));
 app.post('/api/customers', auth, (req, res) => {
-  const { name } = req.body;
+  const { name, contact } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
-  res.status(201).json(createCustomer(randomUUID(), name));
+  res.status(201).json(createCustomer(randomUUID(), name, contact));
+});
+app.patch('/api/customers/:id', auth, (req, res) => {
+  const c = updateCustomer(req.params.id, req.body);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  res.json(c);
 });
 app.delete('/api/customers/:id', auth, (req, res) => {
   deleteCustomer(req.params.id);

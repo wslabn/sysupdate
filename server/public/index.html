@@ -132,6 +132,8 @@
     <div class="tab" onclick="switchTab('network')">Network</div>
     <div class="tab" onclick="switchTab('updates')">Updates</div>
     <div class="tab" onclick="switchTab('events')">Events</div>
+    <div class="tab" onclick="switchTab('notes')">Notes</div>
+    <div class="tab" onclick="switchTab('activity')">Activity</div>
   </div>
 
   <div class="tab-content active" id="tab-overview">
@@ -162,6 +164,17 @@
     <div class="section-title">Recent System Errors</div>
     <div id="detail-events"></div>
   </div>
+
+  <div class="tab-content" id="tab-notes">
+    <div class="section-title">Machine Notes</div>
+    <textarea id="detail-notes" style="width:100%;height:150px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;padding:.75rem;font-size:.85rem;resize:vertical" placeholder="Add notes about this machine..."></textarea>
+    <button onclick="saveNotes()" style="margin-top:.5rem">Save Notes</button>
+  </div>
+
+  <div class="tab-content" id="tab-activity">
+    <div class="section-title">Activity Log</div>
+    <div id="detail-activity"></div>
+  </div>
 </div>
 
 <!-- Remote terminal -->
@@ -180,11 +193,16 @@
 <!-- New customer modal -->
 <div class="modal-bg" id="customer-modal">
   <div class="modal">
-    <h3>New Customer</h3>
+    <h3 id="customer-modal-title">New Customer</h3>
+    <input type="hidden" id="customer-edit-id">
     <input type="text" id="customer-name" placeholder="Customer name">
+    <input type="text" id="customer-email" placeholder="Email" style="margin-bottom:.5rem">
+    <input type="text" id="customer-phone" placeholder="Phone" style="margin-bottom:.5rem">
+    <input type="text" id="customer-address" placeholder="Address">
+    <textarea id="customer-notes" placeholder="Notes" style="width:100%;height:80px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;padding:.5rem;font-size:.85rem;resize:vertical;margin-top:.5rem"></textarea>
     <div class="modal-actions">
       <button class="secondary" onclick="closeModal()">Cancel</button>
-      <button onclick="createCustomer()">Create</button>
+      <button onclick="saveCustomer()">Save</button>
     </div>
   </div>
 </div>
@@ -252,7 +270,8 @@
 
   function groupBlock(title, machineList, customerId) {
     const deleteBtn = customerId
-      ? `<button class="danger" style="padding:.25rem .6rem;font-size:.75rem" onclick="removeCustomer('${customerId}',event)">Delete</button>`
+      ? `<button class="secondary" style="padding:.25rem .6rem;font-size:.75rem" onclick="editCustomer('${customerId}',event)">Edit</button>
+         <button class="danger" style="padding:.25rem .6rem;font-size:.75rem" onclick="removeCustomer('${customerId}',event)">Delete</button>`
       : '';
     const collapsed = (JSON.parse(localStorage.getItem('collapsed') || '{}')[customerId || 'unassigned']) ? 'collapsed' : '';
     const rows = machineList.length
@@ -385,9 +404,29 @@
         </div>`).join('')
       : '<p class="muted">No events recorded</p>';
 
+    // Notes tab
+    document.getElementById('detail-notes').value = m.notes || '';
+
+    // Activity tab
+    const activity = m.activity || [];
+    document.getElementById('detail-activity').innerHTML = activity.length
+      ? activity.map(a => `<div class="info-card" style="border-left-color:#38bdf8">
+          <div style="font-size:.75rem;color:#94a3b8">${new Date(a.timestamp).toLocaleString()}</div>
+          <div style="font-size:.82rem;margin-top:.2rem">${a.action}</div>
+        </div>`).join('')
+      : '<p class="muted">No activity recorded</p>';
+
     // Show panel, reset to overview tab
     document.getElementById('detail').classList.add('open');
     switchTab('overview');
+  }
+
+  async function saveNotes() {
+    const notes = document.getElementById('detail-notes').value;
+    await api(`/api/machines/${currentMachineId}`, {
+      method: 'PATCH', body: JSON.stringify({ notes })
+    });
+    alert('Notes saved.');
   }
 
   async function assignCustomer() {
@@ -423,16 +462,51 @@
     alert(command === 'update-client' ? 'Update command sent. Client will download and reinstall.' : 'Command queued.');
   }
 
-  function openNewCustomer() { document.getElementById('customer-modal').classList.add('open'); }
-  function closeModal() {
-    document.getElementById('customer-modal').classList.remove('open');
+  function openNewCustomer() {
+    document.getElementById('customer-modal-title').textContent = 'New Customer';
+    document.getElementById('customer-edit-id').value = '';
     document.getElementById('customer-name').value = '';
+    document.getElementById('customer-email').value = '';
+    document.getElementById('customer-phone').value = '';
+    document.getElementById('customer-address').value = '';
+    document.getElementById('customer-notes').value = '';
+    document.getElementById('customer-modal').classList.add('open');
   }
 
-  async function createCustomer() {
+  function editCustomer(id, e) {
+    e.stopPropagation();
+    const c = customers.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('customer-modal-title').textContent = 'Edit Customer';
+    document.getElementById('customer-edit-id').value = c.id;
+    document.getElementById('customer-name').value = c.name || '';
+    document.getElementById('customer-email').value = c.contact?.email || '';
+    document.getElementById('customer-phone').value = c.contact?.phone || '';
+    document.getElementById('customer-address').value = c.contact?.address || '';
+    document.getElementById('customer-notes').value = c.notes || '';
+    document.getElementById('customer-modal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('customer-modal').classList.remove('open');
+  }
+
+  async function saveCustomer() {
+    const id = document.getElementById('customer-edit-id').value;
     const name = document.getElementById('customer-name').value.trim();
     if (!name) return;
-    await api('/api/customers', { method: 'POST', body: JSON.stringify({ name }) });
+    const contact = {
+      email: document.getElementById('customer-email').value.trim(),
+      phone: document.getElementById('customer-phone').value.trim(),
+      address: document.getElementById('customer-address').value.trim()
+    };
+    const notes = document.getElementById('customer-notes').value;
+
+    if (id) {
+      await api(`/api/customers/${id}`, { method: 'PATCH', body: JSON.stringify({ name, contact, notes }) });
+    } else {
+      await api('/api/customers', { method: 'POST', body: JSON.stringify({ name, contact }) });
+    }
     closeModal();
     await loadAll();
   }

@@ -43,9 +43,17 @@ export function getCustomers() {
   return Object.values(db.data.customers);
 }
 
-export function createCustomer(id, name) {
+export function createCustomer(id, name, contact) {
   db.read();
-  db.data.customers[id] = { id, name };
+  db.data.customers[id] = { id, name, contact: contact || {}, notes: '' };
+  db.write();
+  return db.data.customers[id];
+}
+
+export function updateCustomer(id, updates) {
+  db.read();
+  if (!db.data.customers[id]) return null;
+  Object.assign(db.data.customers[id], updates);
   db.write();
   return db.data.customers[id];
 }
@@ -66,6 +74,27 @@ export function assignMachine(machineId, customerId) {
   db.data.machines[machineId].customer_id = customerId || null;
   db.write();
   return db.data.machines[machineId];
+}
+
+export function updateMachineNotes(machineId, notes) {
+  db.read();
+  if (!db.data.machines[machineId]) return null;
+  db.data.machines[machineId].notes = notes;
+  db.write();
+  return db.data.machines[machineId];
+}
+
+export function addActivity(machineId, action) {
+  db.read();
+  if (!db.data.machines[machineId]) return;
+  if (!db.data.machines[machineId].activity) db.data.machines[machineId].activity = [];
+  db.data.machines[machineId].activity.unshift({
+    action,
+    timestamp: new Date().toISOString()
+  });
+  // Keep last 50 entries
+  db.data.machines[machineId].activity = db.data.machines[machineId].activity.slice(0, 50);
+  db.write();
 }
 
 export function deleteMachine(id) {
