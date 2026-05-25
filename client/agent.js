@@ -41,6 +41,8 @@ class Agent extends EventEmitter {
     this.ws.on('open', () => {
       this.emit('connected');
       if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+      this.checkIn();
+      this._startCheckinInterval();
     });
 
     this.ws.on('message', (data) => {
@@ -49,11 +51,13 @@ class Agent extends EventEmitter {
 
     this.ws.on('close', () => {
       this.emit('disconnected');
+      this._stopCheckinInterval();
       this._reconnect();
     });
 
     this.ws.on('error', () => {
       this.emit('disconnected');
+      this._stopCheckinInterval();
       this._reconnect();
     });
   }
@@ -64,6 +68,14 @@ class Agent extends EventEmitter {
       this.reconnectTimer = null;
       this.connect();
     }, 10000);
+  }
+
+  _startCheckinInterval() {
+    this.checkinInterval = setInterval(() => this.checkIn(), 3600000);
+  }
+
+  _stopCheckinInterval() {
+    if (this.checkinInterval) { clearInterval(this.checkinInterval); this.checkinInterval = null; }
   }
 
   send(data) {
