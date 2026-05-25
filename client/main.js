@@ -1,7 +1,8 @@
-const { app, Tray, Menu, Notification, nativeImage } = require('electron');
+const { app, Tray, Menu, Notification, nativeImage, desktopCapturer } = require('electron');
 const path = require('path');
 const Agent = require('./agent');
 const Terminal = require('./terminal');
+const CLIENT_VERSION = require('./package.json').version;
 
 // Single instance lock
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(); }
@@ -65,7 +66,8 @@ function updateMenu(status) {
   }[status] || status;
 
   const menu = Menu.buildFromTemplate([
-    { label: `SysUpdate - ${statusLabel}`, enabled: false },
+    { label: `SysUpdate v${CLIENT_VERSION}`, enabled: false },
+    { label: statusLabel, enabled: false },
     { type: 'separator' },
     { label: 'Check In Now', click: () => agent.checkIn() },
     { label: 'Update Drivers', click: () => agent.updateDrivers() },

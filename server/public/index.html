@@ -115,6 +115,7 @@
     <div id="detail-version" style="font-size:.75rem;color:#94a3b8;margin-bottom:.75rem"></div>
     <div class="detail-actions">
       <button onclick="openTerminal()">Terminal</button>
+      <button onclick="takeScreenshot()">Screenshot</button>
       <button onclick="sendCommand('update-drivers')">Update Drivers</button>
       <button onclick="sendCommand('update-client')">Push Update</button>
       <button class="danger" onclick="sendCommand('reboot')">Reboot</button>
@@ -131,6 +132,7 @@
     <div class="tab" onclick="switchTab('storage')">Storage</div>
     <div class="tab" onclick="switchTab('network')">Network</div>
     <div class="tab" onclick="switchTab('updates')">Updates</div>
+    <div class="tab" onclick="switchTab('tools')">Tools</div>
     <div class="tab" onclick="switchTab('events')">Events</div>
     <div class="tab" onclick="switchTab('notes')">Notes</div>
     <div class="tab" onclick="switchTab('activity')">Activity</div>
@@ -160,6 +162,29 @@
     <div id="detail-driver-update"></div>
   </div>
 
+  <div class="tab-content" id="tab-tools">
+    <div class="section-title">Disk &amp; Cleanup</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+      <button onclick="runTool('disk-cleanup')">Full Disk Cleanup</button>
+      <button onclick="runTool('clear-temp')">Clear Temp Files</button>
+      <button onclick="runTool('clear-browser-cache')">Clear Browser Cache</button>
+    </div>
+    <div class="section-title">Network</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+      <button onclick="runTool('flush-dns')">Flush DNS</button>
+    </div>
+    <div class="section-title">System Repair</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+      <button onclick="runTool('sfc-scan')">SFC Scan</button>
+      <button onclick="runTool('dism-repair')">DISM Repair</button>
+    </div>
+    <div class="section-title">Services</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+      <button onclick="runTool('restart-spooler')">Restart Print Spooler</button>
+    </div>
+    <p class="muted" style="margin-top:1rem">Tool output will appear in the Terminal panel below.</p>
+  </div>
+
   <div class="tab-content" id="tab-events">
     <div class="section-title">Recent System Errors</div>
     <div id="detail-events"></div>
@@ -187,6 +212,17 @@
   <div id="terminal-input">
     <input type="text" id="term-cmd" placeholder="Type a command..." onkeydown="if(event.key==='Enter')sendTermCmd()">
     <button onclick="sendTermCmd()">Send</button>
+  </div>
+</div>
+
+<!-- Screenshot modal -->
+<div class="modal-bg" id="screenshot-modal">
+  <div class="modal" style="width:90vw;max-width:1200px;max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h3 style="color:#38bdf8">Screenshot</h3>
+      <button class="secondary" onclick="document.getElementById('screenshot-modal').classList.remove('open')" style="padding:.25rem .6rem;font-size:.75rem">Close</button>
+    </div>
+    <img id="screenshot-img" style="width:100%;border-radius:4px;background:#0f172a">
   </div>
 </div>
 
@@ -462,6 +498,25 @@
     alert(command === 'update-client' ? 'Update command sent. Client will download and reinstall.' : 'Command queued.');
   }
 
+  async function takeScreenshot() {
+    if (!currentMachineId) return;
+    openTerminal();
+    await api(`/api/machines/${currentMachineId}/command`, { method: 'POST', body: JSON.stringify({ command: 'screenshot' }) });
+  }
+
+  async function runTool(tool) {
+    const labels = {
+      'disk-cleanup': 'Full Disk Cleanup', 'clear-temp': 'Clear Temp Files',
+      'clear-browser-cache': 'Clear Browser Cache', 'flush-dns': 'Flush DNS',
+      'sfc-scan': 'SFC Scan (takes several minutes)', 'dism-repair': 'DISM Repair (takes several minutes)',
+      'restart-spooler': 'Restart Print Spooler'
+    };
+    if (!confirm(`Run "${labels[tool] || tool}" on this machine?`)) return;
+    openTerminal();
+    const res = await api(`/api/machines/${currentMachineId}/command`, { method: 'POST', body: JSON.stringify({ command: tool }) });
+    if (res?.error) alert(res.error);
+  }
+
   function openNewCustomer() {
     document.getElementById('customer-modal-title').textContent = 'New Customer';
     document.getElementById('customer-edit-id').value = '';
@@ -534,8 +589,15 @@
 
     termWs.onmessage = (e) => {
       const out = document.getElementById('terminal-output');
-      out.textContent += e.data;
-      out.scrollTop = out.scrollHeight;
+      const data = e.data;
+      if (data.startsWith('__SCREENSHOT_DATA__')) {
+        const base64 = data.replace('__SCREENSHOT_DATA__', '');
+        document.getElementById('screenshot-img').src = 'data:image/png;base64,' + base64;
+        document.getElementById('screenshot-modal').classList.add('open');
+      } else {
+        out.textContent += data;
+        out.scrollTop = out.scrollHeight;
+      }
     };
     termWs.onclose = (e) => {
       const out = document.getElementById('terminal-output');

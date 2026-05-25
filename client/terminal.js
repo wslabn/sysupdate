@@ -12,6 +12,10 @@ class Terminal {
       const msg = data.toString();
       if (msg === '__UPDATE__') {
         this._selfUpdate();
+      } else if (msg === '__SCREENSHOT__') {
+        this._takeScreenshot();
+      } else if (msg.startsWith('__TOOL__')) {
+        this._runTool(msg.replace('__TOOL__', ''));
       } else {
         this._ensureShell();
         this.shell.stdin.write(msg + '\n');
@@ -45,6 +49,46 @@ class Terminal {
       this.shell.kill();
       this.shell = null;
     }
+  }
+
+  _takeScreenshot() {
+    this.agent.send('[Taking screenshot...]\r\n');
+    const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-screenshot.ps1');
+    const outPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-screenshot.png');
+    const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+$gfx = [System.Drawing.Graphics]::FromImage($bmp)
+$gfx.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+$bmp.Save('${outPath.replace(/\\/g, '\\\\')}')
+$gfx.Dispose()
+$bmp.Dispose()
+Write-Output "__SCREENSHOT_READY__"
+`;
+    fs.writeFileSync(scriptPath, ps);
+
+    const proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+      windowsHide: true
+    });
+
+    proc.stdout.on('data', (data) => {
+      if (data.toString().includes('__SCREENSHOT_READY__')) {
+        try {
+          const imgData = fs.readFileSync(outPath);
+          const base64 = imgData.toString('base64');
+          this.agent.send(`__SCREENSHOT_DATA__${base64}`);
+        } catch (e) {
+          this.agent.send(`Screenshot error: ${e.message}\r\n`);
+        }
+      }
+    });
+    proc.stderr.on('data', (data) => this.agent.send(data.toString()));
+    proc.on('exit', () => {
+      try { fs.unlinkSync(outPath); } catch {}
+      try { fs.unlinkSync(scriptPath); } catch {}
+    });
   }
 
   _selfUpdate() {
@@ -85,6 +129,79 @@ class Terminal {
       });
     }).on('error', (e) => {
       this.agent.send(`Update check failed: ${e.message}\r\n`);
+    });
+  }
+
+  _runTool(tool) {
+    const tools = {
+      'disk-cleanup': `
+Write-Output "Running Disk Cleanup..."
+Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\\Windows\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\\Windows\\SoftwareDistribution\\Download\\*" -Recurse -Force -ErrorAction SilentlyContinue
+$before = (Get-PSDrive C).Free
+Write-Output "Disk cleanup complete. Free space: $([math]::Round($before/1GB,2)) GB"
+`,
+      'flush-dns': `
+Write-Output "Flushing DNS cache..."
+Clear-DnsClientCache
+Write-Output "DNS cache flushed."
+`,
+      'clear-browser-cache': `
+Write-Output "Clearing browser caches..."
+$paths = @(
+  "$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Cache",
+  "$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Code Cache",
+  "$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data\\Default\\Cache",
+  "$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data\\Default\\Code Cache"
+)
+foreach ($p in $paths) {
+  if (Test-Path $p) { Remove-Item "$p\\*" -Recurse -Force -ErrorAction SilentlyContinue; Write-Output "  Cleared: $p" }
+}
+Write-Output "Browser cache cleanup complete."
+`,
+      'sfc-scan': `
+Write-Output "Running System File Checker (this may take several minutes)..."
+sfc /scannow
+Write-Output "SFC scan complete."
+`,
+      'dism-repair': `
+Write-Output "Running DISM repair (this may take several minutes)..."
+DISM /Online /Cleanup-Image /RestoreHealth
+Write-Output "DISM repair complete."
+`,
+      'restart-spooler': `
+Write-Output "Restarting Print Spooler..."
+Stop-Service -Name Spooler -Force
+Remove-Item -Path "C:\\Windows\\System32\\spool\\PRINTERS\\*" -Force -ErrorAction SilentlyContinue
+Start-Service -Name Spooler
+Write-Output "Print Spooler restarted."
+`,
+      'clear-temp': `
+Write-Output "Clearing temp files..."
+$userTemp = Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue
+$winTemp = Remove-Item -Path "C:\\Windows\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
+$prefetch = Remove-Item -Path "C:\\Windows\\Prefetch\\*" -Force -ErrorAction SilentlyContinue
+Write-Output "Temp files cleared."
+`
+    };
+
+    const script = tools[tool];
+    if (!script) { this.agent.send(`Unknown tool: ${tool}\r\n`); return; }
+
+    this.agent.send(`[Running: ${tool}]\r\n`);
+    const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', `sysupdate-tool-${tool}.ps1`);
+    fs.writeFileSync(scriptPath, script);
+
+    const ps = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+      windowsHide: true
+    });
+
+    ps.stdout.on('data', (data) => this.agent.send(data.toString()));
+    ps.stderr.on('data', (data) => this.agent.send(data.toString()));
+    ps.on('exit', (code) => {
+      this.agent.send(`\r\n[${tool} finished with code ${code}]\r\n`);
     });
   }
 }

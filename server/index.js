@@ -65,16 +65,23 @@ app.delete('/api/machines/:id', auth, (req, res) => {
 // Queue a command for a machine
 app.post('/api/machines/:id/command', auth, (req, res) => {
   const { command } = req.body;
-  if (!['reboot', 'update-drivers', 'update-client'].includes(command))
+  const validCommands = ['reboot', 'update-drivers', 'update-client', 'screenshot',
+    'disk-cleanup', 'flush-dns', 'clear-browser-cache', 'sfc-scan', 'dism-repair',
+    'restart-spooler', 'clear-temp'];
+  if (!validCommands.includes(command))
     return res.status(400).json({ error: 'Invalid command' });
 
-  // update-client is sent directly via WebSocket
-  if (command === 'update-client') {
+  // Commands that go directly via WebSocket
+  const wsCommands = ['update-client', 'screenshot', 'disk-cleanup', 'flush-dns', 'clear-browser-cache',
+    'sfc-scan', 'dism-repair', 'restart-spooler', 'clear-temp'];
+
+  if (wsCommands.includes(command)) {
     const agentWs = agents.get(req.params.id);
     if (!agentWs || agentWs.readyState !== 1)
       return res.status(404).json({ error: 'Agent offline' });
-    agentWs.send('__UPDATE__');
-    addActivity(req.params.id, 'Pushed client update');
+    const msg = command === 'update-client' ? '__UPDATE__' : command === 'screenshot' ? '__SCREENSHOT__' : `__TOOL__${command}`;
+    agentWs.send(msg);
+    addActivity(req.params.id, `Tool: ${command}`);
     return res.json({ ok: true, command });
   }
 
