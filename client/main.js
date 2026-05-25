@@ -6,6 +6,9 @@ const Terminal = require('./terminal');
 // Single instance lock
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(); }
 
+// Auto-start on login
+app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') });
+
 let tray = null;
 let agent = null;
 let terminal = null;
