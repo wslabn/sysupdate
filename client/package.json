@@ -11,8 +11,7 @@
   "author": "SysUpdate",
   "license": "ISC",
   "dependencies": {
-    "ws": "^8.18.0",
-    "node-powershell": "^5.0.1"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "electron": "^33.0.0",

@@ -4,7 +4,7 @@ const Agent = require('./agent');
 const Terminal = require('./terminal');
 
 // Single instance lock
-if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(); }
 
 let tray = null;
 let agent = null;
