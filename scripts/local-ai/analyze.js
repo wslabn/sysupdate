@@ -85,32 +85,48 @@ async function runAnalysis() {
 
   console.log('Checking local AI availability...');
   const aiResult = await page.evaluate(async (logs) => {
-    // Check for window.ai availability
-    if (!window.ai) return { status: 'unavailable', message: 'window.ai not available' };
+    // Check for window.ai availability (multiple API shapes)
+    const ai = window.ai || window.model || null;
+    if (!ai) {
+      // Try the newer Prompt API namespace
+      if (window.ai?.languageModel) {
+        try {
+          const caps = await window.ai.languageModel.capabilities();
+          if (caps.available === 'no') return { status: 'unavailable', message: 'Model not available' };
+          const session = await window.ai.languageModel.create();
+          const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
+          const response = await session.prompt(prompt);
+          session.destroy();
+          return { status: 'ok', message: response };
+        } catch (e) {
+          return { status: 'error', message: e.message };
+        }
+      }
+      return { status: 'unavailable', message: 'window.ai not available (no API found)' };
+    }
 
     try {
-      const canCreate = await window.ai.canCreateTextSession();
-      if (canCreate !== 'readily') {
-        return { status: 'not-ready', message: `Model status: ${canCreate}` };
+      // Try legacy createTextSession API
+      if (ai.canCreateTextSession) {
+        const canCreate = await ai.canCreateTextSession();
+        if (canCreate !== 'readily') {
+          return { status: 'not-ready', message: `Model status: ${canCreate}` };
+        }
+        const session = await ai.createTextSession();
+        const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
+        const response = await session.prompt(prompt);
+        return { status: 'ok', message: response };
       }
 
-      const session = await window.ai.createTextSession();
-      const prompt = `You are an automated system health monitor for an MSP. Analyze the following Windows system telemetry data.
+      // Try createGenericSession
+      if (ai.createGenericSession) {
+        const session = await ai.createGenericSession();
+        const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
+        const response = await session.prompt(prompt);
+        return { status: 'ok', message: response };
+      }
 
-If everything looks healthy and normal, reply EXACTLY with: SYSTEM IS STABLE
-
-If there are problems that need attention (disk space critical, services crashed, repeated errors, very high uptime without reboot, etc.), provide:
-1. A brief summary of each issue found
-2. Severity (Critical/Warning/Info)
-3. Recommended action
-
-Be concise. Only flag genuine problems, not routine informational events.
-
-TELEMETRY DATA:
-${logs}`;
-
-      const response = await session.prompt(prompt);
-      return { status: 'ok', message: response };
+      return { status: 'unavailable', message: 'window.ai exists but no known session API found' };
     } catch (e) {
       return { status: 'error', message: e.message };
     }
