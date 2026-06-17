@@ -53,7 +53,7 @@ if (-not (Test-Path $configPath)) {
 
 # Register scheduled task
 $psExe = "powershell.exe"
-$action = New-ScheduledTaskAction -Execute $psExe -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$InstallDir\gather.ps1`""
+$action = New-ScheduledTaskAction -Execute $psExe -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$InstallDir\update.ps1`""
 $trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 60) -Once -At (Get-Date)
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -StartWhenAvailable
 Register-ScheduledTask -TaskName "SysUpdate AI Monitor" -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -Force | Out-Null

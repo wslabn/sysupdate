@@ -6,9 +6,6 @@ $ReportDir = "$InstallDir\reports"
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
-# Update scripts first
-& "$InstallDir\update.ps1"
-
 # Gather system info
 $hostname = $env:COMPUTERNAME
 $uptime = (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime

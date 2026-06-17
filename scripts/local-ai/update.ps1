@@ -1,10 +1,13 @@
-# update.ps1 — Pull latest scripts from GitHub
+# update.ps1 — Pull latest scripts from GitHub, then run gather
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $BaseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 
-$files = @("analyze.js", "gather.ps1", "update.ps1")
+$files = @("analyze.js", "gather.ps1")
 foreach ($f in $files) {
     try {
         Invoke-WebRequest -Uri "$BaseUrl/$f" -OutFile "$InstallDir\$f" -UseBasicParsing -ErrorAction Stop
     } catch {}
 }
+
+# Now run the freshly updated gather script
+& "$InstallDir\gather.ps1"
