@@ -38,9 +38,14 @@ foreach ($f in $scriptFiles) {
     Log "  Downloaded $f"
 }
 
-# Create config
+# Create or update config
 $configPath = "$InstallDir\config.json"
-if (-not (Test-Path $configPath)) {
+$createConfig = $true
+if (Test-Path $configPath) {
+    $answer = Read-Host "config.json exists. Recreate it? (y/n)"
+    if ($answer -ne 'y') { $createConfig = $false; Log "Keeping existing config." }
+}
+if ($createConfig) {
     $webhook = Read-Host "Enter your Discord webhook URL"
     $azureEndpoint = Read-Host "Enter your Azure OpenAI endpoint (e.g. https://your-name.openai.azure.com/)"
     $azureKey = Read-Host "Enter your Azure OpenAI key"
@@ -52,8 +57,6 @@ if (-not (Test-Path $configPath)) {
         azure_deployment = $azureDeployment
     } | ConvertTo-Json | Set-Content $configPath
     Log "Config saved."
-} else {
-    Log "config.json already exists."
 }
 
 # Register scheduled task
