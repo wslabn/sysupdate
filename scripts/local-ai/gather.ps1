@@ -23,7 +23,9 @@ $failedServices = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.
 
 # Critical/Error events (last 20)
 $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -MaxEvents 20 -ErrorAction SilentlyContinue | ForEach-Object {
-    "[$($_.TimeCreated.ToString('yyyy-MM-dd HH:mm'))] [$($_.ProviderName)] ID:$($_.Id) $($_.Message -replace '\r\n',' ' -replace '\s+',' ')"
+    $msg = ($_.Message -replace '\r\n',' ' -replace '\s+',' ')
+    if ($msg.Length -gt 150) { $msg = $msg.Substring(0,150) }
+    "[$($_.TimeCreated.ToString('yyyy-MM-dd HH:mm'))] [$($_.ProviderName)] ID:$($_.Id) $msg"
 }
 
 # Build report
