@@ -24,12 +24,12 @@ if (!GROQ_API_KEY) {
   process.exit(1);
 }
 
-// Load system data
+// Load system data (truncate to 3000 chars for API limits)
 if (!fs.existsSync(LOG_PATH)) {
   console.error('ERROR: No system_data.txt found. Run gather.ps1 first.');
   process.exit(1);
 }
-const systemData = fs.readFileSync(LOG_PATH, 'utf8');
+const systemData = fs.readFileSync(LOG_PATH, 'utf8').slice(0, 3000);
 
 // Fix history tracking
 function loadFixHistory() {
