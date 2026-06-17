@@ -197,6 +197,7 @@ ${systemData}`;
     const fixKey = fix.fix_command.trim().toLowerCase();
     if (fixHistory[fixKey] && fixHistory[fixKey] >= 2) {
       console.log(`Recurring issue: ${fix.issue} - requesting deeper analysis...`);
+      await new Promise(r => setTimeout(r, 2000)); // Rate limit delay
       try {
         const deepPrompt = `A Windows service keeps failing after being restarted multiple times. Investigate the root cause and provide an advanced fix.
 
