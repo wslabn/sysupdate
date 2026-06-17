@@ -41,11 +41,14 @@ Write-Host "  Dependencies installed." -ForegroundColor Green
 # Create config file if not exists
 $configPath = "$InstallDir\config.json"
 if (-not (Test-Path $configPath)) {
+    $webhook = Read-Host "Enter your Discord webhook URL"
     @{
-        discord_webhook = "PASTE_YOUR_DISCORD_WEBHOOK_URL_HERE"
+        discord_webhook = $webhook
         interval_minutes = 60
     } | ConvertTo-Json | Set-Content $configPath
-    Write-Host "  Created config.json - UPDATE YOUR DISCORD WEBHOOK URL" -ForegroundColor Yellow
+    Write-Host "  Config saved." -ForegroundColor Green
+} else {
+    Write-Host "  config.json already exists, skipping." -ForegroundColor Green
 }
 
 # Register scheduled task
