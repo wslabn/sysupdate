@@ -80,6 +80,8 @@ Be concise. Do not repeat the raw data back.
 TELEMETRY:
 ${systemData}`;
 
+  let report = null;
+
   try {
     console.log('Querying Ollama...');
     const response = await askOllama(prompt);
@@ -87,14 +89,21 @@ ${systemData}`;
 
     if (response.includes('SYSTEM IS STABLE')) {
       console.log('System is stable. No alert sent.');
-    } else {
-      await sendToDiscord(response);
+      return;
     }
+    report = response;
   } catch (e) {
     console.log(`Ollama not available: ${e.message}`);
     console.log('Falling back to rule-based analysis...');
-    const fallback = runFallbackAnalysis();
-    if (fallback) await sendToDiscord(fallback);
+    report = runFallbackAnalysis();
+  }
+
+  if (report) {
+    try {
+      await sendToDiscord(report);
+    } catch (e) {
+      console.error(`Failed to send to Discord: ${e.message}`);
+    }
   }
 }
 
