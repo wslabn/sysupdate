@@ -2,15 +2,12 @@
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $LogFile = "$InstallDir\system_data.txt"
 $ReportDir = "$InstallDir\reports"
-$BaseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
-# Update analyze.js before running it (so analysis always uses latest code)
-try {
-    Invoke-WebRequest -Uri "$BaseUrl/analyze.js" -OutFile "$InstallDir\analyze.js" -UseBasicParsing -ErrorAction Stop
-} catch {}
+# Update scripts first
+& "$InstallDir\update.ps1"
 
 # Gather system info
 $hostname = $env:COMPUTERNAME

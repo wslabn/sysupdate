@@ -24,7 +24,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Copy scripts
-$scriptFiles = @("analyze.js", "gather.ps1", "package.json")
+$scriptFiles = @("analyze.js", "gather.ps1", "update.ps1", "package.json")
 $baseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 foreach ($f in $scriptFiles) {
     Write-Host "  Downloading $f..."
