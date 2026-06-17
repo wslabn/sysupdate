@@ -1,4 +1,3 @@
-import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LOG_PATH = path.join(__dirname, 'system_data.txt');
 const HOSTNAME = process.env.COMPUTERNAME || 'Unknown';
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
 
 // Load config
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -23,26 +23,6 @@ if (!fs.existsSync(LOG_PATH)) {
   process.exit(1);
 }
 const systemData = fs.readFileSync(LOG_PATH, 'utf8');
-
-// Find available browsers
-function findBrowsers() {
-  const browsers = [];
-  const edgePaths = [
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
-  ];
-  const chromePaths = [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-  ];
-  for (const p of chromePaths) {
-    if (fs.existsSync(p)) { browsers.push({ name: 'Chrome', path: p }); break; }
-  }
-  for (const p of edgePaths) {
-    if (fs.existsSync(p)) { browsers.push({ name: 'Edge', path: p }); break; }
-  }
-  return browsers;
-}
 
 async function sendToDiscord(report) {
   const payload = {
@@ -68,139 +48,64 @@ async function sendToDiscord(report) {
   }
 }
 
-async function tryBrowser(browserInfo) {
-  console.log(`Trying ${browserInfo.name}...`);
-  const browser = await puppeteer.launch({
-    executablePath: browserInfo.path,
-    headless: false,
-    args: [
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--window-position=-10000,-10000',
-      '--window-size=1,1',
-      '--enable-features=OptimizationGuideModelExecution,OptimizationGuideOnDeviceModel',
-      '--optimization-guide-on-device-model-execution-override=BypassPerfRequirement'
-    ]
+async function askOllama(prompt) {
+  const res = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: config.model || 'phi3:mini',
+      prompt,
+      stream: false
+    })
   });
 
-  const page = await browser.newPage();
-  await page.goto('about:blank');
-
-  const aiResult = await page.evaluate(async (logs) => {
-    // Check for window.ai availability (multiple API shapes)
-    const ai = window.ai || window.model || null;
-    if (!ai) {
-      // Try the newer Prompt API namespace
-      if (window.ai?.languageModel) {
-        try {
-          const caps = await window.ai.languageModel.capabilities();
-          if (caps.available === 'no') return { status: 'unavailable', message: 'Model not available' };
-          const session = await window.ai.languageModel.create();
-          const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
-          const response = await session.prompt(prompt);
-          session.destroy();
-          return { status: 'ok', message: response };
-        } catch (e) {
-          return { status: 'error', message: e.message };
-        }
-      }
-      return { status: 'unavailable', message: 'window.ai not available (no API found)' };
-    }
-
-    try {
-      // Try legacy createTextSession API
-      if (ai.canCreateTextSession) {
-        const canCreate = await ai.canCreateTextSession();
-        if (canCreate !== 'readily') {
-          return { status: 'not-ready', message: `Model status: ${canCreate}` };
-        }
-        const session = await ai.createTextSession();
-        const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
-        const response = await session.prompt(prompt);
-        return { status: 'ok', message: response };
-      }
-
-      // Try createGenericSession
-      if (ai.createGenericSession) {
-        const session = await ai.createGenericSession();
-        const prompt = `You are an automated system health monitor. Analyze this telemetry.\nIf healthy, reply EXACTLY: SYSTEM IS STABLE\nIf problems found, summarize issues with severity and recommended actions.\n\n${logs}`;
-        const response = await session.prompt(prompt);
-        return { status: 'ok', message: response };
-      }
-
-      return { status: 'unavailable', message: 'window.ai exists but no known session API found' };
-    } catch (e) {
-      return { status: 'error', message: e.message };
-    }
-  }, systemData);
-
-  await browser.close();
-  return aiResult;
+  if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
+  const data = await res.json();
+  return data.response;
 }
 
 async function runAnalysis() {
-  const browsers = findBrowsers();
-  if (browsers.length === 0) {
-    console.error('ERROR: No supported browser found (Chrome or Edge).');
-    process.exit(1);
-  }
+  const prompt = `You are an automated system health monitor for an MSP. Analyze the following Windows system telemetry.
 
-  let aiResult = null;
+If everything looks healthy and normal, reply EXACTLY with: SYSTEM IS STABLE
 
-  // Try each browser until one has AI available
-  for (const b of browsers) {
-    try {
-      aiResult = await tryBrowser(b);
-      if (aiResult.status === 'ok') {
-        console.log(`AI available in ${b.name}`);
-        break;
-      }
-      console.log(`${b.name}: ${aiResult.message}`);
-    } catch (e) {
-      console.log(`${b.name} failed: ${e.message}`);
+If there are problems that need attention, provide:
+1. A brief summary of each issue
+2. Severity (Critical/Warning/Info)
+3. One-sentence recommended action
+
+Ignore routine stopped services like Windows Update medic, Google updaters, Edge updaters. Only flag services that matter.
+Be concise. Do not repeat the raw data back.
+
+TELEMETRY:
+${systemData}`;
+
+  try {
+    console.log('Querying Ollama...');
+    const response = await askOllama(prompt);
+    console.log(`AI response: ${response.slice(0, 200)}...`);
+
+    if (response.includes('SYSTEM IS STABLE')) {
+      console.log('System is stable. No alert sent.');
+    } else {
+      await sendToDiscord(response);
     }
-  }
-
-  if (!aiResult) aiResult = { status: 'unavailable', message: 'No browser had AI available' };
-
-  // Handle result
-  console.log(`AI status: ${aiResult.status}`);
-
-  if (aiResult.status === 'unavailable' || aiResult.status === 'not-ready') {
-    console.log(`Local AI not available: ${aiResult.message}`);
+  } catch (e) {
+    console.log(`Ollama not available: ${e.message}`);
     console.log('Falling back to rule-based analysis...');
-    const fallbackResult = runFallbackAnalysis();
-    if (fallbackResult) await sendToDiscord(fallbackResult);
-    return;
-  }
-
-  if (aiResult.status === 'error') {
-    console.error(`AI error: ${aiResult.message}`);
-    return;
-  }
-
-  // AI responded
-  const response = aiResult.message;
-  console.log(`AI response: ${response.slice(0, 200)}...`);
-
-  if (response.includes('SYSTEM IS STABLE')) {
-    console.log('System is stable. No alert sent.');
-  } else {
-    console.log('Issues detected. Sending alert...');
-    await sendToDiscord(response);
+    const fallback = runFallbackAnalysis();
+    if (fallback) await sendToDiscord(fallback);
   }
 }
 
-// Fallback: smart rule-based analysis when AI is unavailable
+// Fallback: smart rule-based analysis when Ollama is unavailable
 function runFallbackAnalysis() {
   const issues = [];
   const pendingReboot = systemData.includes('Pending Reboot: True');
 
-  // Known safe-to-ignore stopped services
   const ignoredServices = ['WaaSMedicSvc', 'MapsBroker', 'wlidsvc', 'SCardSvr',
-    'SCPolicySvc', 'sppsvc', 'TieringEngineService', 'WbioSrvc', 'perceptionsimulation'];
+    'SCPolicySvc', 'sppsvc', 'TieringEngineService', 'WbioSrvc', 'perceptionsimulation',
+    'edgeupdate', 'GoogleUpdater', 'MicrosoftEdgeElevationService'];
 
   // Check disk space
   const diskMatches = systemData.match(/\w: [\d.]+GB free \/ [\d.]+GB total \([\d.]+% free\)/g);
@@ -216,7 +121,7 @@ function runFallbackAnalysis() {
   const uptimeMatch = systemData.match(/Uptime: ([\d.]+) hours/);
   const uptimeHours = uptimeMatch ? parseFloat(uptimeMatch[1]) : 0;
 
-  // Check failed services (filter ignored ones)
+  // Check failed services
   let failedServiceCount = 0;
   let failedServiceNames = [];
   const svcSection = systemData.split('=== FAILED AUTOMATIC SERVICES ===')[1]?.split('===')[0]?.trim();
@@ -224,14 +129,14 @@ function runFallbackAnalysis() {
     const lines = svcSection.split('\n').filter(l => l.trim());
     for (const line of lines) {
       const svcName = line.split(' ')[0];
-      if (!ignoredServices.some(s => line.includes(s))) {
+      if (!ignoredServices.some(s => line.toLowerCase().includes(s.toLowerCase()))) {
         failedServiceCount++;
         failedServiceNames.push(svcName);
       }
     }
   }
 
-  // Check critical events (only count unique sources)
+  // Check critical events
   const eventSection = systemData.split('=== RECENT CRITICAL/ERROR EVENTS ===')[1];
   let eventCount = 0;
   let eventSources = new Set();
@@ -244,17 +149,16 @@ function runFallbackAnalysis() {
     }
   }
 
-  // Correlate: pending reboot is likely the root cause
+  // Correlate
   if (pendingReboot) {
-    let rebootMsg = 'Pending reboot detected';
-    if (uptimeHours > 72) rebootMsg += ` (uptime: ${Math.round(uptimeHours / 24)} days)`;
-    if (failedServiceCount > 0) rebootMsg += `. ${failedServiceCount} service(s) may be waiting on reboot: ${failedServiceNames.slice(0, 3).join(', ')}`;
-    if (eventCount >= 10) rebootMsg += `. High error event volume (${eventCount}) likely related.`;
-    issues.push({ severity: 'Warning', msg: rebootMsg });
+    let msg = 'Pending reboot detected';
+    if (uptimeHours > 72) msg += ` (uptime: ${Math.round(uptimeHours / 24)} days)`;
+    if (failedServiceCount > 0) msg += `. ${failedServiceCount} service(s) may be waiting on reboot: ${failedServiceNames.slice(0, 3).join(', ')}`;
+    if (eventCount >= 10) msg += `. High error event volume (${eventCount}) likely related.`;
+    issues.push({ severity: 'Warning', msg });
   } else {
-    // No pending reboot — report issues individually
     if (uptimeHours > 720) {
-      issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days — consider scheduling a reboot` });
+      issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days - consider scheduling a reboot` });
     }
     if (failedServiceCount > 0) {
       issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}` });
@@ -270,7 +174,7 @@ function runFallbackAnalysis() {
   }
 
   const formatted = issues.map(i => `**${i.severity}:** ${i.msg}`).join('\n');
-  return `**Rule-based analysis** (local AI unavailable)\n\n${formatted}`;
+  return `**Rule-based analysis** (AI unavailable)\n\n${formatted}`;
 }
 
 runAnalysis().catch(err => {

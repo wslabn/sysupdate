@@ -1,8 +1,9 @@
-# install.ps1 — Install local AI alerting agent (run as Administrator)
+# install.ps1 - Install local AI alerting agent (run as Administrator)
 #Requires -RunAsAdministrator
 
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $NodeUrl = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi"
+$OllamaUrl = "https://ollama.com/download/OllamaSetup.exe"
 
 Write-Host "`n=== Installing Local AI Alert Agent ===" -ForegroundColor Cyan
 
@@ -15,7 +16,6 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     $msiPath = "$env:TEMP\node-install.msi"
     Invoke-WebRequest -Uri $NodeUrl -OutFile $msiPath -UseBasicParsing
     Start-Process msiexec -ArgumentList "/i `"$msiPath`" /qn" -Wait
-    # Refresh PATH
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
     Remove-Item $msiPath -Force
     Write-Host "  Node.js installed." -ForegroundColor Green
@@ -23,20 +23,33 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "  Node.js already installed: $(node --version)" -ForegroundColor Green
 }
 
+# Install Ollama if not present
+if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+    Write-Host "  Installing Ollama..." -ForegroundColor Yellow
+    $ollamaPath = "$env:TEMP\OllamaSetup.exe"
+    Invoke-WebRequest -Uri $OllamaUrl -OutFile $ollamaPath -UseBasicParsing
+    Start-Process $ollamaPath -ArgumentList "/VERYSILENT /NORESTART" -Wait
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    Remove-Item $ollamaPath -Force
+    Write-Host "  Ollama installed." -ForegroundColor Green
+} else {
+    Write-Host "  Ollama already installed." -ForegroundColor Green
+}
+
+# Pull the AI model
+Write-Host "  Downloading AI model (phi3:mini ~2.3GB)..." -ForegroundColor Yellow
+Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+Start-Sleep -Seconds 3
+ollama pull phi3:mini
+Write-Host "  Model ready." -ForegroundColor Green
+
 # Copy scripts
-$scriptFiles = @("analyze.js", "gather.ps1", "update.ps1", "enable-ai.ps1", "package.json")
+$scriptFiles = @("analyze.js", "gather.ps1", "update.ps1", "package.json")
 $baseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 foreach ($f in $scriptFiles) {
     Write-Host "  Downloading $f..."
     Invoke-WebRequest -Uri "$baseUrl/$f" -OutFile "$InstallDir\$f" -UseBasicParsing
 }
-
-# Install npm dependencies
-Write-Host "  Installing dependencies..." -ForegroundColor Yellow
-Push-Location $InstallDir
-npm install --production 2>&1 | Out-Null
-Pop-Location
-Write-Host "  Dependencies installed." -ForegroundColor Green
 
 # Create config file if not exists
 $configPath = "$InstallDir\config.json"
@@ -44,6 +57,7 @@ if (-not (Test-Path $configPath)) {
     $webhook = Read-Host "Enter your Discord webhook URL"
     @{
         discord_webhook = $webhook
+        model = "phi3:mini"
         interval_minutes = 60
     } | ConvertTo-Json | Set-Content $configPath
     Write-Host "  Config saved." -ForegroundColor Green
@@ -60,9 +74,5 @@ Register-ScheduledTask -TaskName "SysUpdate AI Monitor" -Action $action -Trigger
 
 Write-Host "`n[OK] Local AI Alert Agent installed." -ForegroundColor Green
 Write-Host "     Location: $InstallDir" -ForegroundColor Gray
-Write-Host "     Edit $configPath to set your Discord webhook URL." -ForegroundColor Gray
-
-# Enable AI flags in browsers
-& "$InstallDir\enable-ai.ps1"
-
-Write-Host "`n     Run update.ps1 manually to test." -ForegroundColor Gray
+Write-Host "     Model: phi3:mini (runs locally via Ollama)" -ForegroundColor Gray
+Write-Host "     Test with: powershell -ExecutionPolicy Bypass -File `"$InstallDir\update.ps1`"" -ForegroundColor Gray
