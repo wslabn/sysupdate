@@ -180,7 +180,7 @@ ${systemData}`;
     'microsoftedgeelevationservice', 'gamingservices', 'gpsvc', 'sppsvc',
     'trustedinstaller', 'appxsvc', 'bits', 'dosvc', 'intel', 'sgrmbroker',
     'usosvc', 'wuauserv', 'cryptsvc', 'scard', 'scpolicysvc',
-    'tieringengineservice', 'wbiosrvc', 'energy server'];
+    'tieringengineservice', 'wbiosrvc', 'energy server', 'dcom', 'dcomlaunch'];
 
   for (const fix of autoFixes) {
     // Skip ignored services
@@ -215,7 +215,9 @@ ${systemData}`;
       }
     }
     const result = runPowerShell(fix.fix_command);
-    fixResults.push({ issue: fix.issue, command: fix.fix_command, success: result.success, output: result.output.slice(0, 200) });
+    // "already been started" means service is running - that's fine
+    const effectiveSuccess = result.success || result.output.includes('already been started');
+    fixResults.push({ issue: fix.issue, command: fix.fix_command, success: effectiveSuccess, output: result.output.slice(0, 200) });
     fixHistory[fixKey] = (fixHistory[fixKey] || 0) + 1;
   }
 
