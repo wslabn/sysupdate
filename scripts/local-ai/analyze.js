@@ -123,7 +123,12 @@ ${systemData}`;
     // Parse JSON from response
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      issues = JSON.parse(jsonMatch[0]);
+      // Clean up common JSON issues from AI output
+      let jsonStr = jsonMatch[0]
+        .replace(/\\(?!["\\nrtbfu/])/g, '\\\\')  // fix unescaped backslashes
+        .replace(/[\r\n]+\s*/g, ' ')              // collapse newlines
+        .replace(/,\s*]/g, ']');                   // remove trailing commas
+      issues = JSON.parse(jsonStr);
     } else {
       // Retry with stricter prompt
       console.log('AI did not return JSON, retrying...');
