@@ -13,7 +13,7 @@ $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Objec
 }
 
 # Failed services
-$failedServices = Get-Service | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -ne 'Running' } | Select-Object -First 10 | ForEach-Object {
+$failedServices = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -ne 'Running' } | Select-Object -First 10 | ForEach-Object {
     "$($_.Name) ($($_.DisplayName)) - $($_.Status)"
 }
 
