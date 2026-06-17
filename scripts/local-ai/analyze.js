@@ -242,22 +242,13 @@ function runFallbackAnalysis() {
   return `**Rule-based analysis** (local AI unavailable)\n\n${formatted}`;
 }
 
-runAnalysis().then(() => selfUpdate()).catch(err => {
+runAnalysis().then(async () => {
+  // Update gather.ps1 for next run (safe because PS has already handed off to Node)
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai/gather.ps1');
+    if (res.ok) fs.writeFileSync(path.join(__dirname, 'gather.ps1'), await res.text());
+  } catch {}
+}).catch(err => {
   console.error('Fatal error:', err);
   process.exit(1);
 });
-
-// Update both scripts from GitHub after analysis completes
-async function selfUpdate() {
-  const baseUrl = 'https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai';
-  const files = ['analyze.js', 'gather.ps1'];
-  for (const file of files) {
-    try {
-      const res = await fetch(`${baseUrl}/${file}`);
-      if (res.ok) {
-        const content = await res.text();
-        fs.writeFileSync(path.join(__dirname, file), content);
-      }
-    } catch {}
-  }
-}
