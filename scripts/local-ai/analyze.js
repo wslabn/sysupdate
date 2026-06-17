@@ -80,28 +80,21 @@ function runPowerShell(cmd) {
 
 async function runAnalysis() {
   // Step 1: Diagnose
-  const diagPrompt = `You are an automated system health monitor for an MSP. Analyze this Windows telemetry.
+  const diagPrompt = `Analyze this Windows system telemetry and respond ONLY with valid JSON. No other text.
 
-If everything is healthy, reply EXACTLY: SYSTEM IS STABLE
+If healthy, respond: {"status":"stable"}
 
-If there are problems, respond in this EXACT JSON format (no markdown, no code fences):
-[
-  {
-    "issue": "brief description",
-    "severity": "Critical|Warning|Info",
-    "tier": "auto-fix|manual",
-    "fix_command": "PowerShell command to fix (or empty string if manual)",
-    "explanation": "what the fix does"
-  }
-]
+If problems found, respond with this JSON array:
+[{"issue":"description","severity":"Critical|Warning|Info","tier":"auto-fix|manual","fix_command":"PowerShell command or empty string","explanation":"what the fix does"}]
 
 TIER RULES:
-- "auto-fix": Safe, reversible, no-downtime fixes like restarting services, clearing temp files, flushing DNS, clearing shadow copies, restarting spooler
-- "manual": Anything requiring reboot, Windows Update fixes, TPM/BitLocker, disk space requiring user decisions, unknown issues
+- auto-fix: Restarting services, clearing temp/cache, flushing DNS, deleting old shadow copies. These are SAFE.
+- manual: Reboots, Windows Update fixes, TPM/BitLocker, disk space decisions, anything risky.
 
-Ignore these stopped services (they're normal): edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService
+IGNORE these services (normal to be stopped): edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices
 
-TELEMETRY:
+IMPORTANT: Reply with ONLY the JSON. No markdown. No explanation outside the JSON.
+
 ${systemData}`;
 
   let issues = null;
@@ -110,7 +103,7 @@ ${systemData}`;
     console.log('Querying Ollama for diagnosis...');
     const response = await askOllama(diagPrompt);
 
-    if (response.includes('SYSTEM IS STABLE')) {
+    if (response.includes('"status"') && response.includes('stable')) {
       console.log('System is stable. No action needed.');
       return;
     }
@@ -120,10 +113,23 @@ ${systemData}`;
     if (jsonMatch) {
       issues = JSON.parse(jsonMatch[0]);
     } else {
-      // AI didn't return JSON, send raw response as alert
-      console.log('AI returned non-JSON response, sending as alert.');
-      await sendToDiscord('Alert', response);
-      return;
+      // Retry with stricter prompt
+      console.log('AI did not return JSON, retrying...');
+      const retryPrompt = `Convert this system diagnosis into a JSON array. Reply with ONLY valid JSON, no other text.
+Format: [{"issue":"desc","severity":"Critical|Warning|Info","tier":"auto-fix|manual","fix_command":"PowerShell cmd or empty","explanation":"what fix does"}]
+
+Diagnosis:
+${response}`;
+      const retry = await askOllama(retryPrompt);
+      const retryMatch = retry.match(/\[[\s\S]*\]/);
+      if (retryMatch) {
+        issues = JSON.parse(retryMatch[0]);
+      } else {
+        // Give up on JSON, send raw response
+        console.log('Could not get JSON format. Sending raw alert.');
+        await sendToDiscord('Alert', response);
+        return;
+      }
     }
   } catch (e) {
     console.log(`Ollama error: ${e.message}`);
