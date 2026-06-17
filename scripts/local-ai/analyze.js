@@ -8,6 +8,15 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LOG_PATH = path.join(__dirname, 'system_data.txt');
 const HOSTNAME = process.env.COMPUTERNAME || 'Unknown';
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
+const FIX_HISTORY_PATH = path.join(__dirname, 'fix_history.json');
+
+// Track what was auto-fixed to detect recurring issues
+function loadFixHistory() {
+  try { return JSON.parse(fs.readFileSync(FIX_HISTORY_PATH, 'utf8')); } catch { return {}; }
+}
+function saveFixHistory(history) {
+  fs.writeFileSync(FIX_HISTORY_PATH, JSON.stringify(history));
+}
 
 // Load config
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -149,10 +158,46 @@ ${response}`;
     return;
   }
 
-  // Step 2: Execute auto-fixes
+  // Step 2: Execute auto-fixes (skip recurring issues)
   const autoFixes = issues.filter(i => i.tier === 'auto-fix' && i.fix_command);
   const manualFixes = issues.filter(i => i.tier === 'manual');
   const fixResults = [];
+  const fixHistory = loadFixHistory();
+
+  for (const fix of autoFixes) {
+    // Validate command is real PowerShell
+    const validStarts = /^(Start-|Stop-|Restart-|Remove-|Clear-|Set-|Get-|New-|Invoke-|Reset-|vssadmin|net |ipconfig|sfc|DISM|shutdown|cleanmgr)/i;
+    if (!fix.fix_command || fix.fix_command.length < 5 || !validStarts.test(fix.fix_command.trim())) {
+      console.log(`Skipping invalid command for: ${fix.issue}`);
+      manualFixes.push(fix);
+      continue;
+    }
+
+    // Check if this same fix was applied recently (recurring issue)
+    const fixKey = fix.fix_command.trim().toLowerCase();
+    if (fixHistory[fixKey] && fixHistory[fixKey] >= 2) {
+      console.log(`Recurring issue detected: ${fix.issue} (fixed ${fixHistory[fixKey]} times before)`);
+      fix.issue += ' [RECURRING - auto-fix not resolving]';
+      fix.severity = 'Critical';
+      manualFixes.push(fix);
+      continue;
+    }
+
+    console.log(`Auto-fixing: ${fix.issue}`);
+    console.log(`  Running: ${fix.fix_command}`);
+    const result = runPowerShell(fix.fix_command);
+    fixResults.push({
+      issue: fix.issue,
+      command: fix.fix_command,
+      success: result.success,
+      output: result.output.slice(0, 200)
+    });
+
+    // Track this fix
+    fixHistory[fixKey] = (fixHistory[fixKey] || 0) + 1;
+  }
+
+  saveFixHistory(fixHistory);
 
   for (const fix of autoFixes) {
     // Validate command is real PowerShell (must start with a known verb/binary)
@@ -182,6 +227,7 @@ ${response}`;
     for (const r of fixResults) {
       const icon = r.success ? '\u2705' : '\u274c';
       discordMsg += `${icon} ${r.issue}\n`;
+      discordMsg += `   \`${r.command}\`\n`;
       if (!r.success) discordMsg += `   Error: ${r.output}\n`;
     }
     discordMsg += '\n';
@@ -192,10 +238,13 @@ ${response}`;
     discordMsg += '**Requires Attention:**\n';
     for (const m of manualFixes) {
       discordMsg += `\u26a0\ufe0f **${m.severity}:** ${m.issue}\n`;
-      if (m.fix_command && m.fix_command.length > 4) {
+      // Show fix command if it's valid PowerShell
+      const validCmd = m.fix_command && m.fix_command.length > 4 && /^(Start-|Stop-|Restart-|Remove-|Clear-|Set-|Get-|New-|Invoke-|Reset-|vssadmin|net |ipconfig|sfc|DISM|shutdown|cleanmgr)/i.test(m.fix_command.trim());
+      if (validCmd) {
         discordMsg += `\`\`\`powershell\n${m.fix_command}\n\`\`\`\n`;
       }
-      if (m.explanation && m.explanation !== m.issue) {
+      // Show explanation only if it's unique and relevant to this issue
+      if (m.explanation && m.explanation.length > 5 && m.explanation.toLowerCase().includes(m.issue.toLowerCase().split(' ')[0])) {
         discordMsg += `   _${m.explanation}_\n`;
       }
     }
