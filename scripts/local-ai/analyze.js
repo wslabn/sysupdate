@@ -71,7 +71,13 @@ async function runAnalysis() {
   const browser = await puppeteer.launch({
     executablePath: edgePath,
     headless: true,
-    args: ['--no-first-run', '--no-default-browser-check', '--disable-gpu']
+    args: [
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-gpu',
+      '--enable-features=OptimizationGuideModelExecution,OptimizationGuideOnDeviceModel',
+      '--optimization-guide-on-device-model-execution-override=BypassPerfRequirement'
+    ]
   });
 
   const page = await browser.newPage();
