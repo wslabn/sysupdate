@@ -169,8 +169,8 @@ ${systemData}`;
   const ignoredServices = ['edgeupdate', 'googleupdater', 'waasmedicsvc', 'mapsbroker',
     'microsoftedgeelevationservice', 'gamingservices', 'gpsvc', 'sppsvc',
     'trustedinstaller', 'appxsvc', 'bits', 'dosvc', 'intel', 'sgrmbroker',
-    'usoSvc', 'wuauserv', 'cryptsvc', 'scard', 'scpolicysvc',
-    'tieringengineservice', 'wbiosrvc'];
+    'usosvc', 'wuauserv', 'cryptsvc', 'scard', 'scpolicysvc',
+    'tieringengineservice', 'wbiosrvc', 'energy server'];
 
   for (const fix of autoFixes) {
     // Skip ignored services
@@ -218,6 +218,8 @@ ${systemData}`;
   if (manualFixes.length > 0) {
     discordMsg += '**Requires Attention:**\n';
     for (const m of manualFixes) {
+      // Skip ignored services in manual section too
+      if (ignoredServices.some(s => m.issue.toLowerCase().includes(s))) continue;
       discordMsg += `\u26a0\ufe0f **${m.severity}:** ${m.issue}\n`;
       if (m.fix_command && m.fix_command.length > 4 && validStarts.test(m.fix_command.trim())) {
         discordMsg += `\`\`\`powershell\n${m.fix_command}\n\`\`\`\n`;
