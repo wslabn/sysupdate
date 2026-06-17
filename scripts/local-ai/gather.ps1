@@ -1,6 +1,10 @@
 # gather.ps1 — Collect system telemetry and run local AI analysis
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $LogFile = "$InstallDir\system_data.txt"
+$ReportDir = "$InstallDir\reports"
+
+# Create reports directory
+New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
 # Gather system info
 $hostname = $env:COMPUTERNAME
@@ -41,6 +45,13 @@ $(if ($events) { $events -join "`n" } else { "No critical events" })
 
 # Write to file for Node to read
 $report | Set-Content $LogFile -Encoding UTF8
+
+# Save timestamped report
+$timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm'
+$report | Set-Content "$ReportDir\$timestamp.txt" -Encoding UTF8
+
+# Cleanup reports older than 14 days
+Get-ChildItem $ReportDir -Filter "*.txt" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } | Remove-Item -Force
 
 # Run the AI analysis
 Push-Location $InstallDir

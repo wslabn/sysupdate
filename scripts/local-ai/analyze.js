@@ -162,45 +162,74 @@ async function runAnalysis() {
   }
 }
 
-// Fallback: simple rule-based analysis when AI is unavailable
+// Fallback: smart rule-based analysis when AI is unavailable
 function runFallbackAnalysis() {
   const issues = [];
+  const pendingReboot = systemData.includes('Pending Reboot: True');
+
+  // Known safe-to-ignore stopped services
+  const ignoredServices = ['WaaSMedicSvc', 'MapsBroker', 'wlidsvc', 'SCardSvr',
+    'SCPolicySvc', 'sppsvc', 'TieringEngineService', 'WbioSrvc', 'perceptionsimulation'];
 
   // Check disk space
-  const diskMatches = systemData.match(/(\w:) ([\d.]+)GB free \/ ([\d.]+)GB total \(([\d.]+)% free\)/g);
+  const diskMatches = systemData.match(/\w: [\d.]+GB free \/ [\d.]+GB total \([\d.]+% free\)/g);
   if (diskMatches) {
     for (const m of diskMatches) {
       const pct = parseFloat(m.match(/([\d.]+)% free/)[1]);
-      if (pct < 10) issues.push(`**Critical:** ${m.split(' ')[0]} only ${pct}% free disk space`);
+      if (pct < 5) issues.push({ severity: 'Critical', msg: `${m.split(' ')[0]} only ${pct}% free disk space` });
+      else if (pct < 10) issues.push({ severity: 'Warning', msg: `${m.split(' ')[0]} low disk space (${pct}% free)` });
     }
-  }
-
-  // Check pending reboot
-  if (systemData.includes('Pending Reboot: True')) {
-    issues.push('**Warning:** Pending reboot detected');
   }
 
   // Check uptime
   const uptimeMatch = systemData.match(/Uptime: ([\d.]+) hours/);
-  if (uptimeMatch && parseFloat(uptimeMatch[1]) > 720) {
-    issues.push(`**Warning:** System uptime is ${uptimeMatch[1]} hours (30+ days)`);
-  }
+  const uptimeHours = uptimeMatch ? parseFloat(uptimeMatch[1]) : 0;
 
-  // Check failed services
-  if (systemData.includes('=== FAILED AUTOMATIC SERVICES ===')) {
-    const svcSection = systemData.split('=== FAILED AUTOMATIC SERVICES ===')[1].split('===')[0].trim();
-    if (svcSection && svcSection !== 'None') {
-      const count = svcSection.split('\n').filter(l => l.trim()).length;
-      issues.push(`**Warning:** ${count} automatic service(s) not running`);
+  // Check failed services (filter ignored ones)
+  let failedServiceCount = 0;
+  let failedServiceNames = [];
+  const svcSection = systemData.split('=== FAILED AUTOMATIC SERVICES ===')[1]?.split('===')[0]?.trim();
+  if (svcSection && svcSection !== 'None') {
+    const lines = svcSection.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      const svcName = line.split(' ')[0];
+      if (!ignoredServices.some(s => line.includes(s))) {
+        failedServiceCount++;
+        failedServiceNames.push(svcName);
+      }
     }
   }
 
-  // Check critical events
+  // Check critical events (only count unique sources)
   const eventSection = systemData.split('=== RECENT CRITICAL/ERROR EVENTS ===')[1];
+  let eventCount = 0;
+  let eventSources = new Set();
   if (eventSection && !eventSection.includes('No critical events')) {
-    const eventCount = eventSection.trim().split('\n').filter(l => l.trim()).length;
-    if (eventCount >= 10) {
-      issues.push(`**Warning:** ${eventCount} critical/error events found in system log`);
+    const eventLines = eventSection.trim().split('\n').filter(l => l.trim());
+    eventCount = eventLines.length;
+    for (const line of eventLines) {
+      const srcMatch = line.match(/\[([^\]]+)\] ID:/);
+      if (srcMatch) eventSources.add(srcMatch[1]);
+    }
+  }
+
+  // Correlate: pending reboot is likely the root cause
+  if (pendingReboot) {
+    let rebootMsg = 'Pending reboot detected';
+    if (uptimeHours > 72) rebootMsg += ` (uptime: ${Math.round(uptimeHours / 24)} days)`;
+    if (failedServiceCount > 0) rebootMsg += `. ${failedServiceCount} service(s) may be waiting on reboot: ${failedServiceNames.slice(0, 3).join(', ')}`;
+    if (eventCount >= 10) rebootMsg += `. High error event volume (${eventCount}) likely related.`;
+    issues.push({ severity: 'Warning', msg: rebootMsg });
+  } else {
+    // No pending reboot — report issues individually
+    if (uptimeHours > 720) {
+      issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days — consider scheduling a reboot` });
+    }
+    if (failedServiceCount > 0) {
+      issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}` });
+    }
+    if (eventCount >= 15) {
+      issues.push({ severity: 'Warning', msg: `${eventCount} critical/error events from: ${[...eventSources].slice(0, 4).join(', ')}` });
     }
   }
 
@@ -209,7 +238,8 @@ function runFallbackAnalysis() {
     return null;
   }
 
-  return `**Rule-based analysis** (local AI unavailable)\n\n${issues.join('\n')}`;
+  const formatted = issues.map(i => `**${i.severity}:** ${i.msg}`).join('\n');
+  return `**Rule-based analysis** (local AI unavailable)\n\n${formatted}`;
 }
 
 runAnalysis().catch(err => {
