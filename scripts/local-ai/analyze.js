@@ -24,16 +24,24 @@ if (!fs.existsSync(LOG_PATH)) {
 }
 const systemData = fs.readFileSync(LOG_PATH, 'utf8');
 
-// Find Edge executable
-function findEdge() {
-  const paths = [
+// Find available browsers
+function findBrowsers() {
+  const browsers = [];
+  const edgePaths = [
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
   ];
-  for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+  const chromePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+  ];
+  for (const p of chromePaths) {
+    if (fs.existsSync(p)) { browsers.push({ name: 'Chrome', path: p }); break; }
   }
-  return null;
+  for (const p of edgePaths) {
+    if (fs.existsSync(p)) { browsers.push({ name: 'Edge', path: p }); break; }
+  }
+  return browsers;
 }
 
 async function sendToDiscord(report) {
@@ -60,16 +68,10 @@ async function sendToDiscord(report) {
   }
 }
 
-async function runAnalysis() {
-  const edgePath = findEdge();
-  if (!edgePath) {
-    console.error('ERROR: Microsoft Edge not found.');
-    process.exit(1);
-  }
-
-  console.log('Launching Edge...');
+async function tryBrowser(browserInfo) {
+  console.log(`Trying ${browserInfo.name}...`);
   const browser = await puppeteer.launch({
-    executablePath: edgePath,
+    executablePath: browserInfo.path,
     headless: false,
     args: [
       '--no-first-run',
@@ -86,7 +88,6 @@ async function runAnalysis() {
   const page = await browser.newPage();
   await page.goto('about:blank');
 
-  console.log('Checking local AI availability...');
   const aiResult = await page.evaluate(async (logs) => {
     // Check for window.ai availability (multiple API shapes)
     const ai = window.ai || window.model || null;
@@ -136,6 +137,33 @@ async function runAnalysis() {
   }, systemData);
 
   await browser.close();
+  return aiResult;
+}
+
+async function runAnalysis() {
+  const browsers = findBrowsers();
+  if (browsers.length === 0) {
+    console.error('ERROR: No supported browser found (Chrome or Edge).');
+    process.exit(1);
+  }
+
+  let aiResult = null;
+
+  // Try each browser until one has AI available
+  for (const b of browsers) {
+    try {
+      aiResult = await tryBrowser(b);
+      if (aiResult.status === 'ok') {
+        console.log(`AI available in ${b.name}`);
+        break;
+      }
+      console.log(`${b.name}: ${aiResult.message}`);
+    } catch (e) {
+      console.log(`${b.name} failed: ${e.message}`);
+    }
+  }
+
+  if (!aiResult) aiResult = { status: 'unavailable', message: 'No browser had AI available' };
 
   // Handle result
   console.log(`AI status: ${aiResult.status}`);
