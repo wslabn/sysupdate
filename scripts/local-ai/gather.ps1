@@ -6,8 +6,11 @@ $ReportDir = "$InstallDir\reports"
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
-# Ensure AI flag is enabled in Chrome/Edge
-$flag = "optimization-guide-on-device-model@2"
+# Ensure AI flags are enabled in Chrome/Edge
+$flags = @(
+    "optimization-guide-on-device-model@2",
+    "prompt-api-for-gemini-nano@1"
+)
 @(
     "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State",
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Local State"
@@ -18,8 +21,14 @@ $flag = "optimization-guide-on-device-model@2"
             if (-not $state.browser.enabled_labs_experiments) {
                 $state.browser | Add-Member -NotePropertyName "enabled_labs_experiments" -NotePropertyValue @() -Force
             }
-            if ($state.browser.enabled_labs_experiments -notcontains $flag) {
-                $state.browser.enabled_labs_experiments += $flag
+            $changed = $false
+            foreach ($flag in $flags) {
+                if ($state.browser.enabled_labs_experiments -notcontains $flag) {
+                    $state.browser.enabled_labs_experiments += $flag
+                    $changed = $true
+                }
+            }
+            if ($changed) {
                 $state | ConvertTo-Json -Depth 100 | Set-Content $_ -Encoding UTF8
             }
         } catch {}
