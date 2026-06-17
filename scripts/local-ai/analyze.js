@@ -127,11 +127,20 @@ ${systemData}`;
     // Parse JSON from response
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      let jsonStr = jsonMatch[0]
-        .replace(/\\(?!["\\nrtbfu/])/g, '\\\\')
-        .replace(/[\r\n]+\s*/g, ' ')
-        .replace(/,\s*]/g, ']');
-      issues = JSON.parse(jsonStr);
+      let jsonStr = jsonMatch[0].replace(/[\r\n]+\s*/g, ' ').replace(/,\s*]/g, ']');
+      try {
+        issues = JSON.parse(jsonStr);
+      } catch {
+        // Fix Windows paths: replace backslashes with forward slashes in commands
+        jsonStr = jsonStr.replace(/\\(?!["\\nrtbfu/])/g, '/');
+        try {
+          issues = JSON.parse(jsonStr);
+        } catch (e3) {
+          // Strip all backslashes as last resort
+          jsonStr = jsonMatch[0].replace(/\\/g, '/').replace(/[\r\n]+\s*/g, ' ').replace(/,\s*]/g, ']');
+          issues = JSON.parse(jsonStr);
+        }
+      }
     } else {
       console.log('AI did not return JSON. Sending raw alert.');
       await sendToDiscord('Alert', response);
