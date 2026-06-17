@@ -99,6 +99,7 @@ If healthy, respond: {"status":"stable"}
 If problems found, respond with a JSON array like these examples:
 [{"issue":"WSearch service stopped","severity":"Warning","tier":"auto-fix","fix_command":"Start-Service WSearch","explanation":"Restarts Windows Search service"},
 {"issue":"Shadow copy storage full on C:","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /for=C: /all /quiet","explanation":"Deletes old shadow copies to free storage"},
+{"issue":"Low disk space on C:","severity":"Critical","tier":"auto-fix","fix_command":"Remove-Item $env:TEMP/* -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item C:/Windows/Temp/* -Recurse -Force -ErrorAction SilentlyContinue; Clear-RecycleBin -Force -ErrorAction SilentlyContinue","explanation":"Clears temp files and recycle bin to free disk space"},
 {"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir/SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update cache and restarts service"},
 {"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"TPM hardware issue - may need BIOS reset or vendor support"}]
 
@@ -204,6 +205,15 @@ ${systemData}`;
 
     console.log(`Auto-fixing: ${fix.issue}`);
     console.log(`  Running: ${fix.fix_command}`);
+    // Validate service exists if it's a Start/Restart-Service command
+    const svcMatch = fix.fix_command.match(/^(Start|Restart)-Service\s+(.+)$/i);
+    if (svcMatch) {
+      const check = runPowerShell(`Get-Service '${svcMatch[2]}' -ErrorAction SilentlyContinue`);
+      if (!check.success || !check.output) {
+        console.log(`  Service '${svcMatch[2]}' not found, skipping.`);
+        continue;
+      }
+    }
     const result = runPowerShell(fix.fix_command);
     fixResults.push({ issue: fix.issue, command: fix.fix_command, success: result.success, output: result.output.slice(0, 200) });
     fixHistory[fixKey] = (fixHistory[fixKey] || 0) + 1;
