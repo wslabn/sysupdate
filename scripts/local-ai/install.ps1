@@ -29,19 +29,31 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Install Ollama if not present
-if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Log "Installing Ollama..."
-    $ollamaPath = "$env:TEMP\OllamaSetup.exe"
-    Invoke-WebRequest -Uri $OllamaUrl -OutFile $ollamaPath -UseBasicParsing
-    Log "Ollama downloaded, running installer..."
-    Start-Process $ollamaPath -Wait
-    Start-Sleep -Seconds 5
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-    Remove-Item $ollamaPath -Force -ErrorAction SilentlyContinue
-    Stop-Process -Name "Ollama" -ErrorAction SilentlyContinue
-    Log "Ollama installed."
+$ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
+if (-not $ollamaCmd) {
+    # Check common install locations
+    $ollamaExe = @(
+        "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe",
+        "$env:ProgramFiles\Ollama\ollama.exe",
+        "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe"
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($ollamaExe) {
+        $env:Path += ";$(Split-Path $ollamaExe)"
+        Log "Ollama found at: $ollamaExe"
+    } else {
+        Log "Installing Ollama..."
+        $ollamaPath = "$env:TEMP\OllamaSetup.exe"
+        Invoke-WebRequest -Uri $OllamaUrl -OutFile $ollamaPath -UseBasicParsing
+        Log "Ollama downloaded, running installer..."
+        Start-Process $ollamaPath -Wait
+        Start-Sleep -Seconds 5
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        Remove-Item $ollamaPath -Force -ErrorAction SilentlyContinue
+        Stop-Process -Name "Ollama" -ErrorAction SilentlyContinue
+        Log "Ollama installed."
+    }
 } else {
-    Log "Ollama already installed: $(ollama --version)"
+    Log "Ollama already in PATH: $(ollama --version)"
 }
 
 # Pull the AI model
