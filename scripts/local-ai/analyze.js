@@ -86,9 +86,11 @@ If healthy, respond: {"status":"stable"}
 
 If problems found, respond with a JSON array like these examples:
 [{"issue":"WSearch service stopped","severity":"Warning","tier":"auto-fix","fix_command":"Start-Service WSearch","explanation":"Restarts Windows Search service"},
-{"issue":"Shadow copy storage full","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /all /quiet","explanation":"Deletes old shadow copies to free space"},
-{"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir\\SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update components"},
-{"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"Requires manual investigation of TPM hardware"}]
+{"issue":"Shadow copy storage full on C:","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /for=C: /all /quiet","explanation":"Deletes old shadow copies to free storage"},
+{"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir\\SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update cache and restarts service"},
+{"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"TPM hardware issue - may need BIOS reset or vendor support"}]
+
+Each item MUST have its OWN explanation that matches its own issue. Do not mix explanations between items.
 
 RULES:
 - auto-fix tier: Restarting services, clearing caches, vssadmin cleanup. fix_command must be a real PowerShell command.
@@ -190,10 +192,10 @@ ${response}`;
     discordMsg += '**Requires Attention:**\n';
     for (const m of manualFixes) {
       discordMsg += `\u26a0\ufe0f **${m.severity}:** ${m.issue}\n`;
-      if (m.fix_command) {
+      if (m.fix_command && m.fix_command.length > 4) {
         discordMsg += `\`\`\`powershell\n${m.fix_command}\n\`\`\`\n`;
       }
-      if (m.explanation) {
+      if (m.explanation && m.explanation !== m.issue) {
         discordMsg += `   _${m.explanation}_\n`;
       }
     }
