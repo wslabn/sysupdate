@@ -42,11 +42,14 @@ foreach ($f in $scriptFiles) {
 $configPath = "$InstallDir\config.json"
 if (-not (Test-Path $configPath)) {
     $webhook = Read-Host "Enter your Discord webhook URL"
-    $groqKey = Read-Host "Enter your Groq API key"
+    $azureEndpoint = Read-Host "Enter your Azure OpenAI endpoint (e.g. https://your-name.openai.azure.com/)"
+    $azureKey = Read-Host "Enter your Azure OpenAI key"
+    $azureDeployment = Read-Host "Enter your deployment name (e.g. gpt-4.1-mini)"
     @{
         discord_webhook = $webhook
-        groq_api_key = $groqKey
-        model = "llama-3.1-8b-instant"
+        azure_endpoint = $azureEndpoint
+        azure_key = $azureKey
+        azure_deployment = $azureDeployment
     } | ConvertTo-Json | Set-Content $configPath
     Log "Config saved."
 } else {

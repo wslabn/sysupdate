@@ -12,15 +12,16 @@ const HOSTNAME = process.env.COMPUTERNAME || 'Unknown';
 // Load config
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 const DISCORD_WEBHOOK = config.discord_webhook;
-const GROQ_API_KEY = config.groq_api_key;
-const GROQ_MODEL = config.model || 'llama-3.1-8b-instant';
+const AZURE_ENDPOINT = config.azure_endpoint;
+const AZURE_KEY = config.azure_key;
+const AZURE_DEPLOYMENT = config.azure_deployment || 'gpt-4.1-mini';
 
 if (!DISCORD_WEBHOOK || DISCORD_WEBHOOK.includes('PASTE_YOUR')) {
   console.error('ERROR: Set discord_webhook in config.json');
   process.exit(1);
 }
-if (!GROQ_API_KEY) {
-  console.error('ERROR: Set groq_api_key in config.json');
+if (!AZURE_KEY || !AZURE_ENDPOINT) {
+  console.error('ERROR: Set azure_endpoint and azure_key in config.json');
   process.exit(1);
 }
 
@@ -61,21 +62,21 @@ async function sendToDiscord(title, description, color = 16731136) {
 }
 
 async function askAI(prompt) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const url = `${AZURE_ENDPOINT}openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=2024-10-21`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`
+      'api-key': AZURE_KEY
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
       max_tokens: 4096
     })
   });
 
-  if (!res.ok) throw new Error(`Groq error: ${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`Azure OpenAI error: ${res.status} ${res.statusText}`);
   const data = await res.json();
   return data.choices[0].message.content;
 }
@@ -122,7 +123,7 @@ ${systemData}`;
   let issues = null;
 
   try {
-    console.log('Querying Groq AI...');
+    console.log('Querying Azure OpenAI...');
     const response = await askAI(diagPrompt);
     console.log(`AI response: ${response.slice(0, 200)}...`);
 
