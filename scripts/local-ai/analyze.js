@@ -110,6 +110,7 @@ RULES:
 - IGNORE these services: edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices, gpsvc, sppsvc, TrustedInstaller, AppXSvc, BITS, dosvc, Intel, SgrmBroker, UsoSvc, wuauserv, cryptsvc
 - fix_command must be REAL PowerShell. Never put placeholder text.
 - NEVER use backslashes in fix_command. Use forward slashes for paths (e.g. C:/Windows/Temp) or use environment variables (e.g. $env:windir).
+- Only flag disk space as an issue if it is BELOW 10% free. 74% free is healthy, do NOT report it.
 
 TELEMETRY:
 ${systemData}`;
