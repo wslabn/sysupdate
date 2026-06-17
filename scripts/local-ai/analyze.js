@@ -82,12 +82,15 @@ async function askAI(prompt) {
 
 function runPowerShell(cmd) {
   try {
-    const result = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${cmd.replace(/"/g, '\\"')}"`, {
+    // Write command to temp script to avoid quoting/length issues
+    const scriptPath = path.join(__dirname, 'temp_cmd.ps1');
+    fs.writeFileSync(scriptPath, cmd);
+    const result = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`, {
       encoding: 'utf8', timeout: 60000, windowsHide: true
     });
     return { success: true, output: result.trim() };
   } catch (e) {
-    return { success: false, output: e.message };
+    return { success: false, output: e.stderr || e.message };
   }
 }
 
@@ -197,7 +200,7 @@ ${systemData}`;
     const fixKey = fix.fix_command.trim().toLowerCase();
     if (fixHistory[fixKey] && fixHistory[fixKey] >= 2) {
       console.log(`Recurring issue: ${fix.issue} - requesting deeper analysis...`);
-      await new Promise(r => setTimeout(r, 2000)); // Rate limit delay
+      await new Promise(r => setTimeout(r, 5000)); // Rate limit delay
       try {
         const deepPrompt = `A Windows service keeps failing after being restarted multiple times. Investigate the root cause and provide an advanced fix.
 
