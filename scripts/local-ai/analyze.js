@@ -153,8 +153,9 @@ ${response}`;
   const fixResults = [];
 
   for (const fix of autoFixes) {
-    // Skip if command looks like placeholder text
-    if (!fix.fix_command || fix.fix_command.length < 5 || /^(command|empty|placeholder|string|or)/i.test(fix.fix_command)) {
+    // Validate command is real PowerShell (must start with a known verb/binary)
+    const validStarts = /^(Start-|Stop-|Restart-|Remove-|Clear-|Set-|Get-|New-|Invoke-|Reset-|vssadmin|net |ipconfig|sfc|DISM|shutdown|cleanmgr)/i;
+    if (!fix.fix_command || fix.fix_command.length < 5 || !validStarts.test(fix.fix_command.trim())) {
       console.log(`Skipping invalid command for: ${fix.issue}`);
       manualFixes.push(fix);
       continue;
