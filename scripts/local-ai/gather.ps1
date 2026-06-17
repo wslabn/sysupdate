@@ -1,19 +1,10 @@
-# gather.ps1 - Collect system telemetry and run local AI analysis
+# gather.ps1 - Collect system telemetry and run AI analysis
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $LogFile = "$InstallDir\system_data.txt"
 $ReportDir = "$InstallDir\reports"
 
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
-
-# Check if Ollama is running, start if installed but not running
-if (Get-Command ollama -ErrorAction SilentlyContinue) {
-    $ollamaRunning = try { Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -ErrorAction Stop; $true } catch { $false }
-    if (-not $ollamaRunning) {
-        Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
-        Start-Sleep -Seconds 3
-    }
-}
 
 # Gather system info
 $hostname = $env:COMPUTERNAME
