@@ -28,9 +28,12 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
     Write-Host "  Installing Ollama..." -ForegroundColor Yellow
     $ollamaPath = "$env:TEMP\OllamaSetup.exe"
     Invoke-WebRequest -Uri $OllamaUrl -OutFile $ollamaPath -UseBasicParsing
-    Start-Process $ollamaPath -ArgumentList "/VERYSILENT /NORESTART" -Wait
+    Start-Process $ollamaPath -Wait
+    Start-Sleep -Seconds 5
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-    Remove-Item $ollamaPath -Force
+    Remove-Item $ollamaPath -Force -ErrorAction SilentlyContinue
+    # Kill the Ollama app window that opens after install
+    Stop-Process -Name "Ollama" -ErrorAction SilentlyContinue
     Write-Host "  Ollama installed." -ForegroundColor Green
 } else {
     Write-Host "  Ollama already installed." -ForegroundColor Green
