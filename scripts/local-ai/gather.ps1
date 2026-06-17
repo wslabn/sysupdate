@@ -6,6 +6,26 @@ $ReportDir = "$InstallDir\reports"
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
+# Ensure AI flag is enabled in Chrome/Edge
+$flag = "optimization-guide-on-device-model@2"
+@(
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Local State"
+) | ForEach-Object {
+    if (Test-Path $_) {
+        try {
+            $state = Get-Content $_ -Raw | ConvertFrom-Json
+            if (-not $state.browser.enabled_labs_experiments) {
+                $state.browser | Add-Member -NotePropertyName "enabled_labs_experiments" -NotePropertyValue @() -Force
+            }
+            if ($state.browser.enabled_labs_experiments -notcontains $flag) {
+                $state.browser.enabled_labs_experiments += $flag
+                $state | ConvertTo-Json -Depth 100 | Set-Content $_ -Encoding UTF8
+            }
+        } catch {}
+    }
+}
+
 # Gather system info
 $hostname = $env:COMPUTERNAME
 $uptime = (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime

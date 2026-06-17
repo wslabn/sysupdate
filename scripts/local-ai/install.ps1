@@ -24,7 +24,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Copy scripts
-$scriptFiles = @("analyze.js", "gather.ps1", "update.ps1", "package.json")
+$scriptFiles = @("analyze.js", "gather.ps1", "update.ps1", "enable-ai.ps1", "package.json")
 $baseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 foreach ($f in $scriptFiles) {
     Write-Host "  Downloading $f..."
@@ -61,4 +61,8 @@ Register-ScheduledTask -TaskName "SysUpdate AI Monitor" -Action $action -Trigger
 Write-Host "`n[OK] Local AI Alert Agent installed." -ForegroundColor Green
 Write-Host "     Location: $InstallDir" -ForegroundColor Gray
 Write-Host "     Edit $configPath to set your Discord webhook URL." -ForegroundColor Gray
-Write-Host "     Run gather.ps1 manually to test." -ForegroundColor Gray
+
+# Enable AI flags in browsers
+& "$InstallDir\enable-ai.ps1"
+
+Write-Host "`n     Run update.ps1 manually to test." -ForegroundColor Gray
