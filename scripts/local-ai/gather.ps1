@@ -2,15 +2,9 @@
 $InstallDir = "$env:ProgramData\sysupdate-ai"
 $LogFile = "$InstallDir\system_data.txt"
 $ReportDir = "$InstallDir\reports"
-$BaseUrl = "https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai"
 
 # Create reports directory
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
-
-# Auto-update scripts from GitHub
-try {
-    Invoke-WebRequest -Uri "$BaseUrl/analyze.js" -OutFile "$InstallDir\analyze.js" -UseBasicParsing -ErrorAction Stop
-} catch {}
 
 # Gather system info
 $hostname = $env:COMPUTERNAME
