@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,12 +25,12 @@ if (!fs.existsSync(LOG_PATH)) {
 }
 const systemData = fs.readFileSync(LOG_PATH, 'utf8');
 
-async function sendToDiscord(report) {
+async function sendToDiscord(title, description, color = 16731136) {
   const payload = {
     embeds: [{
-      title: `Alert: ${HOSTNAME}`,
-      color: 16731136,
-      description: report.slice(0, 4000),
+      title: `${title}: ${HOSTNAME}`,
+      color,
+      description: description.slice(0, 4000),
       timestamp: new Date().toISOString(),
       footer: { text: 'SysUpdate Local AI Monitor' }
     }]
@@ -42,7 +43,7 @@ async function sendToDiscord(report) {
   });
 
   if (res.ok) {
-    console.log('Alert sent to Discord.');
+    console.log('Discord message sent.');
   } else {
     console.error(`Discord error: ${res.status} ${res.statusText}`);
   }
@@ -64,50 +65,136 @@ async function askOllama(prompt) {
   return data.response;
 }
 
+function runPowerShell(cmd) {
+  try {
+    const result = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${cmd.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf8',
+      timeout: 60000,
+      windowsHide: true
+    });
+    return { success: true, output: result.trim() };
+  } catch (e) {
+    return { success: false, output: e.message };
+  }
+}
+
 async function runAnalysis() {
-  const prompt = `You are an automated system health monitor for an MSP. Analyze the following Windows system telemetry.
+  // Step 1: Diagnose
+  const diagPrompt = `You are an automated system health monitor for an MSP. Analyze this Windows telemetry.
 
-If everything looks healthy and normal, reply EXACTLY with: SYSTEM IS STABLE
+If everything is healthy, reply EXACTLY: SYSTEM IS STABLE
 
-If there are problems that need attention, provide:
-1. A brief summary of each issue
-2. Severity (Critical/Warning/Info)
-3. One-sentence recommended action
+If there are problems, respond in this EXACT JSON format (no markdown, no code fences):
+[
+  {
+    "issue": "brief description",
+    "severity": "Critical|Warning|Info",
+    "tier": "auto-fix|manual",
+    "fix_command": "PowerShell command to fix (or empty string if manual)",
+    "explanation": "what the fix does"
+  }
+]
 
-Ignore routine stopped services like Windows Update medic, Google updaters, Edge updaters. Only flag services that matter.
-Be concise. Do not repeat the raw data back.
+TIER RULES:
+- "auto-fix": Safe, reversible, no-downtime fixes like restarting services, clearing temp files, flushing DNS, clearing shadow copies, restarting spooler
+- "manual": Anything requiring reboot, Windows Update fixes, TPM/BitLocker, disk space requiring user decisions, unknown issues
+
+Ignore these stopped services (they're normal): edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService
 
 TELEMETRY:
 ${systemData}`;
 
-  let report = null;
+  let issues = null;
 
   try {
-    console.log('Querying Ollama...');
-    const response = await askOllama(prompt);
-    console.log(`AI response: ${response.slice(0, 200)}...`);
+    console.log('Querying Ollama for diagnosis...');
+    const response = await askOllama(diagPrompt);
 
     if (response.includes('SYSTEM IS STABLE')) {
-      console.log('System is stable. No alert sent.');
+      console.log('System is stable. No action needed.');
       return;
     }
-    report = response;
+
+    // Parse JSON from response
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      issues = JSON.parse(jsonMatch[0]);
+    } else {
+      // AI didn't return JSON, send raw response as alert
+      console.log('AI returned non-JSON response, sending as alert.');
+      await sendToDiscord('Alert', response);
+      return;
+    }
   } catch (e) {
-    console.log(`Ollama not available: ${e.message}`);
+    console.log(`Ollama error: ${e.message}`);
     console.log('Falling back to rule-based analysis...');
-    report = runFallbackAnalysis();
+    const fallback = runFallbackAnalysis();
+    if (fallback) {
+      try { await sendToDiscord('Alert', fallback); } catch {}
+    }
+    return;
   }
 
-  if (report) {
+  if (!issues || issues.length === 0) {
+    console.log('No issues found.');
+    return;
+  }
+
+  // Step 2: Execute auto-fixes
+  const autoFixes = issues.filter(i => i.tier === 'auto-fix' && i.fix_command);
+  const manualFixes = issues.filter(i => i.tier === 'manual');
+  const fixResults = [];
+
+  for (const fix of autoFixes) {
+    console.log(`Auto-fixing: ${fix.issue}`);
+    const result = runPowerShell(fix.fix_command);
+    fixResults.push({
+      issue: fix.issue,
+      command: fix.fix_command,
+      success: result.success,
+      output: result.output.slice(0, 200)
+    });
+  }
+
+  // Step 3: Report to Discord
+  let discordMsg = '';
+
+  // Auto-fix results
+  if (fixResults.length > 0) {
+    discordMsg += '**Auto-Remediated:**\n';
+    for (const r of fixResults) {
+      const icon = r.success ? '\u2705' : '\u274c';
+      discordMsg += `${icon} ${r.issue}\n`;
+      if (!r.success) discordMsg += `   Error: ${r.output}\n`;
+    }
+    discordMsg += '\n';
+  }
+
+  // Manual fixes needing attention
+  if (manualFixes.length > 0) {
+    discordMsg += '**Requires Attention:**\n';
+    for (const m of manualFixes) {
+      discordMsg += `\u26a0\ufe0f **${m.severity}:** ${m.issue}\n`;
+      if (m.fix_command) {
+        discordMsg += `\`\`\`powershell\n${m.fix_command}\n\`\`\`\n`;
+      }
+      if (m.explanation) {
+        discordMsg += `   _${m.explanation}_\n`;
+      }
+    }
+  }
+
+  if (discordMsg) {
+    const color = manualFixes.some(m => m.severity === 'Critical') ? 16711680 : 16751360;
     try {
-      await sendToDiscord(report);
+      await sendToDiscord(fixResults.length > 0 ? 'Auto-Fix Report' : 'Alert', discordMsg, color);
     } catch (e) {
       console.error(`Failed to send to Discord: ${e.message}`);
     }
   }
 }
 
-// Fallback: smart rule-based analysis when Ollama is unavailable
+// Fallback rule-based analysis
 function runFallbackAnalysis() {
   const issues = [];
   const pendingReboot = systemData.includes('Pending Reboot: True');
@@ -116,7 +203,6 @@ function runFallbackAnalysis() {
     'SCPolicySvc', 'sppsvc', 'TieringEngineService', 'WbioSrvc', 'perceptionsimulation',
     'edgeupdate', 'GoogleUpdater', 'MicrosoftEdgeElevationService'];
 
-  // Check disk space
   const diskMatches = systemData.match(/\w: [\d.]+GB free \/ [\d.]+GB total \([\d.]+% free\)/g);
   if (diskMatches) {
     for (const m of diskMatches) {
@@ -126,11 +212,9 @@ function runFallbackAnalysis() {
     }
   }
 
-  // Check uptime
   const uptimeMatch = systemData.match(/Uptime: ([\d.]+) hours/);
   const uptimeHours = uptimeMatch ? parseFloat(uptimeMatch[1]) : 0;
 
-  // Check failed services
   let failedServiceCount = 0;
   let failedServiceNames = [];
   const svcSection = systemData.split('=== FAILED AUTOMATIC SERVICES ===')[1]?.split('===')[0]?.trim();
@@ -145,7 +229,6 @@ function runFallbackAnalysis() {
     }
   }
 
-  // Check critical events
   const eventSection = systemData.split('=== RECENT CRITICAL/ERROR EVENTS ===')[1];
   let eventCount = 0;
   let eventSources = new Set();
@@ -158,7 +241,6 @@ function runFallbackAnalysis() {
     }
   }
 
-  // Correlate
   if (pendingReboot) {
     let msg = 'Pending reboot detected';
     if (uptimeHours > 72) msg += ` (uptime: ${Math.round(uptimeHours / 24)} days)`;
@@ -166,15 +248,9 @@ function runFallbackAnalysis() {
     if (eventCount >= 10) msg += `. High error event volume (${eventCount}) likely related.`;
     issues.push({ severity: 'Warning', msg });
   } else {
-    if (uptimeHours > 720) {
-      issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days - consider scheduling a reboot` });
-    }
-    if (failedServiceCount > 0) {
-      issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}` });
-    }
-    if (eventCount >= 15) {
-      issues.push({ severity: 'Warning', msg: `${eventCount} critical/error events from: ${[...eventSources].slice(0, 4).join(', ')}` });
-    }
+    if (uptimeHours > 720) issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days - consider scheduling a reboot` });
+    if (failedServiceCount > 0) issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}` });
+    if (eventCount >= 15) issues.push({ severity: 'Warning', msg: `${eventCount} critical/error events from: ${[...eventSources].slice(0, 4).join(', ')}` });
   }
 
   if (issues.length === 0) {
@@ -182,8 +258,7 @@ function runFallbackAnalysis() {
     return null;
   }
 
-  const formatted = issues.map(i => `**${i.severity}:** ${i.msg}`).join('\n');
-  return `**Rule-based analysis** (AI unavailable)\n\n${formatted}`;
+  return issues.map(i => `**${i.severity}:** ${i.msg}`).join('\n');
 }
 
 runAnalysis().catch(err => {
