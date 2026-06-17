@@ -67,14 +67,17 @@ async function runAnalysis() {
     process.exit(1);
   }
 
-  console.log('Launching headless Edge...');
+  console.log('Launching Edge...');
   const browser = await puppeteer.launch({
     executablePath: edgePath,
-    headless: true,
+    headless: false,
     args: [
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-gpu',
+      '--disable-extensions',
+      '--window-position=-10000,-10000',
+      '--window-size=1,1',
       '--enable-features=OptimizationGuideModelExecution,OptimizationGuideOnDeviceModel',
       '--optimization-guide-on-device-model-execution-override=BypassPerfRequirement'
     ]
