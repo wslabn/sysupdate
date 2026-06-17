@@ -166,8 +166,18 @@ ${systemData}`;
   const fixResults = [];
   const fixHistory = loadFixHistory();
   const validStarts = /^(Start-|Stop-|Restart-|Remove-|Clear-|Set-|Get-|New-|Invoke-|Reset-|vssadmin|net |ipconfig|sfc|DISM|shutdown|cleanmgr)/i;
+  const ignoredServices = ['edgeupdate', 'googleupdater', 'waasmedicsvc', 'mapsbroker',
+    'microsoftedgeelevationservice', 'gamingservices', 'gpsvc', 'sppsvc',
+    'trustedinstaller', 'appxsvc', 'bits', 'dosvc', 'intel', 'sgrmbroker',
+    'usoSvc', 'wuauserv', 'cryptsvc', 'scard', 'scpolicysvc',
+    'tieringengineservice', 'wbiosrvc'];
 
   for (const fix of autoFixes) {
+    // Skip ignored services
+    if (ignoredServices.some(s => fix.issue.toLowerCase().includes(s))) {
+      console.log(`Skipping ignored service: ${fix.issue}`);
+      continue;
+    }
     if (!fix.fix_command || fix.fix_command.length < 5 || !validStarts.test(fix.fix_command.trim())) {
       console.log(`Skipping invalid command for: ${fix.issue}`);
       manualFixes.push(fix);
