@@ -29,8 +29,8 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Install Ollama if not present
-$ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
-if (-not $ollamaCmd) {
+$ollamaInstalled = try { ollama --version 2>$null; $true } catch { $false }
+if (-not $ollamaInstalled) {
     # Check common install locations
     $ollamaExe = @(
         "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe",
@@ -53,7 +53,7 @@ if (-not $ollamaCmd) {
         Log "Ollama installed."
     }
 } else {
-    Log "Ollama already in PATH: $(ollama --version)"
+    Log "Ollama already installed."
 }
 
 # Pull the AI model
