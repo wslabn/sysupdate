@@ -199,52 +199,9 @@ ${systemData}`;
 
     const fixKey = fix.fix_command.trim().toLowerCase();
     if (fixHistory[fixKey] && fixHistory[fixKey] >= 2) {
-      console.log(`Recurring issue: ${fix.issue} - requesting deeper analysis...`);
-      await new Promise(r => setTimeout(r, 5000)); // Rate limit delay
-      try {
-        const deepPrompt = `A Windows service keeps failing after being restarted multiple times. Investigate the root cause and provide an advanced fix.
-
-Issue: ${fix.issue}
-Simple fix that keeps failing: ${fix.fix_command}
-System telemetry:
-${systemData}
-
-Respond with ONLY valid JSON (no markdown):
-{"diagnosis":"root cause explanation","fix_commands":["cmd1","cmd2"],"explanation":"what these commands do"}
-
-RULES:
-- fix_commands must be real PowerShell commands
-- NEVER use backslashes, use forward slashes or $env: variables
-- Focus on WHY the service keeps stopping, not just restarting it
-- Consider: corrupted index, dependency issues, disk space, permissions`;
-        const deepResponse = await askAI(deepPrompt);
-        const deepMatch = deepResponse.match(/\{[\s\S]*\}/);
-        if (deepMatch) {
-          const deep = JSON.parse(deepMatch[0].replace(/[\r\n]+\s*/g, ' '));
-          // Run the advanced fix commands
-          let deepResults = [];
-          for (const cmd of (deep.fix_commands || [])) {
-            if (validStarts.test(cmd.trim())) {
-              console.log(`  Deep fix: ${cmd}`);
-              const r = runPowerShell(cmd);
-              deepResults.push(`${r.success ? '\u2705' : '\u274c'} \`${cmd}\``);
-            }
-          }
-          fixResults.push({
-            issue: `${fix.issue} [DEEP FIX]`,
-            command: deep.fix_commands?.join('; ') || fix.fix_command,
-            success: true,
-            output: `Diagnosis: ${deep.diagnosis || 'N/A'}\n${deepResults.join('\n')}`
-          });
-          fixHistory[fixKey] = 0; // Reset counter after deep fix
-          continue;
-        }
-      } catch (e) {
-        console.log(`Deep analysis failed: ${e.message}`);
-      }
-      // If deep analysis failed, escalate to manual
       fix.issue += ' [RECURRING]';
       fix.severity = 'Critical';
+      fix._recurring = true;
       manualFixes.push(fix);
       continue;
     }
@@ -268,6 +225,51 @@ RULES:
   }
 
   saveFixHistory(fixHistory);
+
+  // Step 2b: Deep analysis for recurring issues (single API call)
+  const recurringIssues = manualFixes.filter(m => m._recurring);
+  if (recurringIssues.length > 0) {
+    console.log(`Requesting deep analysis for ${recurringIssues.length} recurring issue(s)...`);
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const issueList = recurringIssues.map(r => `- ${r.issue}: simple fix "${r.fix_command}" keeps failing`).join('\n');
+      const deepPrompt = `These Windows issues keep recurring after simple fixes. For EACH issue, explain the root cause and provide an advanced PowerShell fix command.
+
+Recurring issues:
+${issueList}
+
+Respond with ONLY a JSON array (no markdown):
+[{"issue":"issue name","diagnosis":"root cause","fix_command":"advanced PowerShell fix"}]
+
+RULES:
+- fix_command must be real PowerShell
+- NEVER use backslashes, use forward slashes or $env: variables
+- Focus on WHY it keeps failing, not just restarting`;
+
+      const deepResponse = await askAI(deepPrompt);
+      const deepMatch = deepResponse.match(/\[[\s\S]*\]/);
+      if (deepMatch) {
+        const deepFixes = JSON.parse(deepMatch[0].replace(/[\r\n]+\s*/g, ' '));
+        for (const df of deepFixes) {
+          if (df.fix_command && validStarts.test(df.fix_command.trim())) {
+            console.log(`  Deep fix for ${df.issue}: ${df.fix_command}`);
+            const r = runPowerShell(df.fix_command);
+            fixResults.push({
+              issue: `${df.issue} [DEEP FIX]`,
+              command: df.fix_command,
+              success: r.success || r.output?.includes('already been started'),
+              output: `Diagnosis: ${df.diagnosis || 'N/A'}`
+            });
+            // Remove from manual since we handled it
+            const idx = manualFixes.findIndex(m => m.issue.includes(df.issue.replace(' [RECURRING]', '')));
+            if (idx >= 0) manualFixes.splice(idx, 1);
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`Deep analysis failed: ${e.message}`);
+    }
+  }
 
   // Step 3: Report to Discord
   let discordMsg = '';
