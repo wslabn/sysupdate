@@ -106,7 +106,7 @@ Each item MUST have its OWN correct explanation matching its own issue.
 RULES:
 - auto-fix tier: Restarting services, clearing caches, vssadmin cleanup. fix_command must be a real PowerShell command.
 - manual tier: Reboots, Windows Update, TPM, disk space decisions. fix_command can be empty or a suggested command.
-- IGNORE these services: edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices
+- IGNORE these services: edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices, gpsvc, sppsvc, TrustedInstaller, AppXSvc, BITS, dosvc, Intel, SgrmBroker, UsoSvc, wuauserv, cryptsvc
 - fix_command must be REAL PowerShell. Never put placeholder text.
 - NEVER use backslashes in fix_command. Use forward slashes for paths (e.g. C:/Windows/Temp) or use environment variables (e.g. $env:windir).
 
@@ -231,7 +231,8 @@ function runFallbackAnalysis() {
   const pendingReboot = systemData.includes('Pending Reboot: True');
   const ignoredServices = ['WaaSMedicSvc', 'MapsBroker', 'wlidsvc', 'SCardSvr',
     'SCPolicySvc', 'sppsvc', 'TieringEngineService', 'WbioSrvc', 'perceptionsimulation',
-    'edgeupdate', 'GoogleUpdater', 'MicrosoftEdgeElevationService'];
+    'edgeupdate', 'GoogleUpdater', 'MicrosoftEdgeElevationService', 'gpsvc',
+    'TrustedInstaller', 'AppXSvc', 'BITS', 'dosvc', 'Intel', 'SgrmBroker', 'UsoSvc'];
 
   const diskMatches = systemData.match(/\w: [\d.]+GB free \/ [\d.]+GB total \([\d.]+% free\)/g);
   if (diskMatches) {
