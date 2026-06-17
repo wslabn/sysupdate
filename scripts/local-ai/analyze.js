@@ -312,11 +312,22 @@ function runFallbackAnalysis() {
     if (uptimeHours > 72) msg += ` (uptime: ${Math.round(uptimeHours / 24)} days)`;
     if (failedServiceCount > 0) msg += `. ${failedServiceCount} service(s) may be waiting on reboot: ${failedServiceNames.slice(0, 3).join(', ')}`;
     if (eventCount >= 10) msg += `. High error event volume (${eventCount}) likely related.`;
+    msg += '\n   **Fix:** `shutdown /r /t 60 /c "Scheduled reboot"`';
     issues.push({ severity: 'Warning', msg });
   } else {
-    if (uptimeHours > 720) issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days - consider scheduling a reboot` });
-    if (failedServiceCount > 0) issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}` });
-    if (eventCount >= 15) issues.push({ severity: 'Warning', msg: `${eventCount} critical/error events from: ${[...eventSources].slice(0, 4).join(', ')}` });
+    if (uptimeHours > 720) {
+      issues.push({ severity: 'Warning', msg: `System uptime is ${Math.round(uptimeHours / 24)} days - consider scheduling a reboot\n   **Fix:** \`shutdown /r /t 60 /c "Scheduled reboot"\`` });
+    }
+    if (failedServiceCount > 0) {
+      const cmds = failedServiceNames.slice(0, 3).map(s => `Start-Service ${s}`).join('; ');
+      issues.push({ severity: 'Warning', msg: `${failedServiceCount} automatic service(s) not running: ${failedServiceNames.slice(0, 5).join(', ')}\n   **Fix:** \`${cmds}\`` });
+    }
+    if (eventCount >= 15) {
+      let fixHint = '';
+      if ([...eventSources].some(s => s.includes('Volsnap'))) fixHint = '\n   **Fix:** `vssadmin delete shadows /for=C: /all /quiet`';
+      if ([...eventSources].some(s => s.includes('WindowsUpdateClient'))) fixHint += '\n   **Fix:** `Stop-Service wuauserv; Remove-Item $env:windir\\SoftwareDistribution -Recurse -Force; Start-Service wuauserv`';
+      issues.push({ severity: 'Warning', msg: `${eventCount} critical/error events from: ${[...eventSources].slice(0, 4).join(', ')}${fixHint}` });
+    }
   }
 
   if (issues.length === 0) {
