@@ -70,7 +70,8 @@ async function askAI(prompt) {
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2
+      temperature: 0.2,
+      max_tokens: 4096
     })
   });
 
@@ -131,20 +132,27 @@ ${systemData}`;
       let jsonStr = jsonMatch[0].replace(/[\r\n]+\s*/g, ' ').replace(/,\s*]/g, ']');
       try {
         issues = JSON.parse(jsonStr);
-      } catch {
-        // Fix Windows paths: replace backslashes with forward slashes in commands
+      } catch (e1) {
+        // Fix Windows paths: replace backslashes with forward slashes
         jsonStr = jsonStr.replace(/\\(?!["\\nrtbfu/])/g, '/');
         try {
           issues = JSON.parse(jsonStr);
-        } catch (e3) {
+        } catch (e2) {
           // Strip all backslashes as last resort
           jsonStr = jsonMatch[0].replace(/\\/g, '/').replace(/[\r\n]+\s*/g, ' ').replace(/,\s*]/g, ']');
-          issues = JSON.parse(jsonStr);
+          try {
+            issues = JSON.parse(jsonStr);
+          } catch (e3) {
+            console.log(`JSON parse failed: ${e3.message}`);
+            console.log(`Raw response (first 500): ${response.slice(0, 500)}`);
+            await sendToDiscord('Alert', response.slice(0, 4000));
+            return;
+          }
         }
       }
     } else {
-      console.log('AI did not return JSON. Sending raw alert.');
-      await sendToDiscord('Alert', response);
+      console.log(`No JSON array found. Response starts with: ${response.slice(0, 100)}`);
+      await sendToDiscord('Alert', response.slice(0, 4000));
       return;
     }
   } catch (e) {
