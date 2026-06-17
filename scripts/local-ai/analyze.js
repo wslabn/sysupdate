@@ -84,16 +84,17 @@ async function runAnalysis() {
 
 If healthy, respond: {"status":"stable"}
 
-If problems found, respond with this JSON array:
-[{"issue":"description","severity":"Critical|Warning|Info","tier":"auto-fix|manual","fix_command":"PowerShell command or empty string","explanation":"what the fix does"}]
+If problems found, respond with a JSON array like these examples:
+[{"issue":"WSearch service stopped","severity":"Warning","tier":"auto-fix","fix_command":"Start-Service WSearch","explanation":"Restarts Windows Search service"},
+{"issue":"Shadow copy storage full","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /all /quiet","explanation":"Deletes old shadow copies to free space"},
+{"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir\\SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update components"},
+{"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"Requires manual investigation of TPM hardware"}]
 
-TIER RULES:
-- auto-fix: Restarting services, clearing temp/cache, flushing DNS, deleting old shadow copies. These are SAFE.
-- manual: Reboots, Windows Update fixes, TPM/BitLocker, disk space decisions, anything risky.
-
-IGNORE these services (normal to be stopped): edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices
-
-IMPORTANT: Reply with ONLY the JSON. No markdown. No explanation outside the JSON.
+RULES:
+- auto-fix tier: Restarting services, clearing caches, vssadmin cleanup. fix_command must be a real PowerShell command.
+- manual tier: Reboots, Windows Update, TPM, disk space decisions. fix_command can be empty or a suggested command.
+- IGNORE these services: edgeupdate, GoogleUpdater, WaaSMedicSvc, MapsBroker, MicrosoftEdgeElevationService, GamingServices
+- fix_command must be REAL PowerShell. Never put placeholder text.
 
 ${systemData}`;
 
@@ -152,7 +153,14 @@ ${response}`;
   const fixResults = [];
 
   for (const fix of autoFixes) {
+    // Skip if command looks like placeholder text
+    if (!fix.fix_command || fix.fix_command.length < 5 || /^(command|empty|placeholder|string|or)/i.test(fix.fix_command)) {
+      console.log(`Skipping invalid command for: ${fix.issue}`);
+      manualFixes.push(fix);
+      continue;
+    }
     console.log(`Auto-fixing: ${fix.issue}`);
+    console.log(`  Running: ${fix.fix_command}`);
     const result = runPowerShell(fix.fix_command);
     fixResults.push({
       issue: fix.issue,
