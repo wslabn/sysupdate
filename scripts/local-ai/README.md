@@ -1,23 +1,24 @@
-# Local AI Alert Agent
+# AI Alert Agent
 
-Standalone system health monitoring using a local AI model (Ollama). Analyzes system telemetry on-device and sends alerts to Discord only when problems are detected.
+Automated system health monitoring with AI-powered diagnostics. Collects telemetry, analyzes with Azure OpenAI (gpt-4.1-mini), auto-fixes safe issues, and sends alerts to Discord.
 
 ## How It Works
 
-1. PowerShell gathers system data (events, disk space, services, uptime)
-2. Sends data to Ollama (local AI running on the machine)
-3. AI determines if the system is healthy or has issues
-4. If issues found → sends a formatted alert to Discord
-5. If healthy → does nothing (no spam)
-
-Falls back to rule-based analysis if Ollama isn't running.
+1. PowerShell gathers system data (events, disk space, services, uptime, crash dumps)
+2. Sends data to Azure OpenAI for intelligent analysis
+3. AI categorizes issues into **auto-fix** (safe) or **manual** (needs human)
+4. Auto-fixes execute immediately (restart services, clear temp, cleanup shadow copies)
+5. Recurring issues trigger **deep analysis** — AI investigates root cause and applies advanced fixes
+6. Manual issues alert Discord with suggested PowerShell commands
+7. If a fix requires reboot, it's scheduled for 2:00 AM automatically
+8. Falls back to rule-based analysis if AI is unavailable
 
 ## Requirements
 
 - Windows 10/11
-- ~4GB RAM available for the AI model
-- ~3GB disk space for Ollama + model
-- Outbound HTTPS (port 443) for Discord webhooks
+- Node.js (installed automatically)
+- Azure OpenAI resource with gpt-4.1-mini deployed
+- Outbound HTTPS (port 443) for Azure and Discord
 
 ## Install
 
@@ -26,11 +27,11 @@ Run as Administrator:
 irm https://raw.githubusercontent.com/wslabn/sysupdate/main/scripts/local-ai/install.ps1 | iex
 ```
 
-This installs:
-- Node.js (if not present)
-- Ollama (local AI runtime)
-- phi3:mini model (~2.3GB download)
-- Scheduled task (runs hourly)
+You'll be prompted for:
+- Discord webhook URL
+- Azure OpenAI endpoint (e.g. `https://your-resource.openai.azure.com/`)
+- Azure OpenAI API key
+- Deployment name (e.g. `gpt-4.1-mini`)
 
 ## Test
 
@@ -44,32 +45,65 @@ Edit `C:\ProgramData\sysupdate-ai\config.json`:
 ```json
 {
   "discord_webhook": "https://discord.com/api/webhooks/...",
-  "model": "phi3:mini",
-  "interval_minutes": 60
+  "azure_endpoint": "https://your-resource.openai.azure.com/",
+  "azure_key": "your-api-key",
+  "azure_deployment": "gpt-4.1-mini"
 }
 ```
 
-Available models (smaller = faster, larger = smarter):
-- `phi3:mini` — 2.3GB, fast, good for diagnostics (default)
-- `llama3.2:1b` — 1.3GB, fastest, basic analysis
-- `llama3.2:3b` — 2GB, good balance
-- `mistral` — 4GB, more detailed analysis
-
-Change model: `ollama pull <model>` then update config.json.
-
 ## What Gets Monitored
 
-- Disk space (alerts below 10% free)
-- System uptime (alerts above 30 days)
-- Failed automatic services (filters out known safe ones)
-- Critical/error events in Windows System log
-- Pending reboot status
-- AI correlates issues (e.g. pending reboot + failed services = one alert)
+- **Disk space** — alerts below 10% free, auto-cleans temp/recycle bin
+- **Services** — detects stopped automatic services, restarts safe ones
+- **Windows Update** — detects failed updates, suggests fixes
+- **System events** — critical/error events from System and Application logs
+- **Crash dumps** — detects BSODs, extracts stop codes, reports faulting info
+- **Uptime** — alerts if uptime exceeds 30 days
+- **Pending reboot** — correlates with other issues
+- **TPM/hardware** — flags hardware issues for manual attention
+
+## Auto-Fix Tiers
+
+| Tier | Action | Examples |
+|------|--------|----------|
+| **auto-fix** | Runs immediately | Restart services, clear temp, delete shadow copies, flush DNS |
+| **manual** | Alerts Discord with commands | Windows Update reset, BIOS issues, disk space decisions |
+| **deep fix** | AI investigates recurring issues | Rebuilds indexes, resets components, fixes permissions |
+
+## Recurring Issue Detection
+
+If the same auto-fix runs 2+ times without resolving, the AI performs a deeper investigation:
+- Asks "WHY does this keep failing?"
+- Generates advanced fix commands targeting the root cause
+- Executes them and reports results
+
+## Scheduled Reboots
+
+When a fix requires a reboot:
+- Reboot is scheduled for **2:00 AM** (off-hours)
+- Discord is notified: "🔄 Reboot scheduled for 2:00 AM"
+- Users see a Windows notification about the pending restart
+
+## Auto-Updates
+
+Scripts update automatically from GitHub on every run. The scheduled task calls `update.ps1` which:
+1. Downloads latest `analyze.js` and `gather.ps1`
+2. Runs the analysis with fresh code
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `update.ps1` | Entry point — updates scripts, runs gather |
+| `gather.ps1` | Collects system telemetry |
+| `analyze.js` | AI analysis, auto-fix, Discord alerts |
+| `config.json` | API keys and webhook URL |
+| `fix_history.json` | Tracks recurring fixes |
+| `reports/` | Timestamped telemetry reports (14-day retention) |
 
 ## Uninstall
 
 ```powershell
 Unregister-ScheduledTask -TaskName "SysUpdate AI Monitor" -Confirm:$false
 Remove-Item -Path "$env:ProgramData\sysupdate-ai" -Recurse -Force
-winget uninstall Ollama.Ollama
 ```
