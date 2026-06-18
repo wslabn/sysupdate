@@ -34,12 +34,20 @@ $appEvents = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1
 }
 $events = @($sysEvents) + @($appEvents)
 
-# Recent crash dumps (last 7 days)
+# Recent crash dumps (last 7 days) with stop codes
 $dumpDir = "$env:SystemRoot\Minidump"
 $dumps = @()
 if (Test-Path $dumpDir) {
     $dumps = Get-ChildItem $dumpDir -Filter "*.dmp" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) } | ForEach-Object {
-        "$($_.Name) - $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm')) - $([math]::Round($_.Length/1KB,1))KB"
+        $stopCode = "unknown"
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            if ($bytes.Length -gt 64) {
+                $code = [BitConverter]::ToUInt32($bytes, 56)
+                $stopCode = "0x{0:X8}" -f $code
+            }
+        } catch {}
+        "$($_.Name) - $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm')) - StopCode:$stopCode"
     }
 }
 
