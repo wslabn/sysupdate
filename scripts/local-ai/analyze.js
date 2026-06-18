@@ -117,6 +117,7 @@ RULES:
 - fix_command must be REAL PowerShell. Never put placeholder text.
 - NEVER use backslashes in fix_command. Use forward slashes for paths (e.g. C:/Windows/Temp) or use environment variables (e.g. $env:windir).
 - Only flag disk space as an issue if it is BELOW 10% free. 74% free is healthy, do NOT report it.
+- If crash dump files are present, mention the stop codes and what they typically indicate.
 
 TELEMETRY:
 ${systemData}`;
@@ -287,6 +288,12 @@ RULES:
     console.log(`Scheduling reboot for 2:00 AM (${secondsUntil} seconds)...`);
     runPowerShell(`shutdown /r /t ${secondsUntil} /c "SysUpdate: Scheduled maintenance reboot at 2:00 AM"`);
     rebootMsg = `\n\n🔄 **Reboot scheduled for 2:00 AM** (fixes require restart)`;
+  }
+
+  // Check for crash dumps in telemetry
+  const dumpSection = systemData.match(/=== CRASH DUMPS.*?===([\s\S]*?)(?:===|$)/);
+  if (dumpSection && !dumpSection[1].includes('None')) {
+    rebootMsg += `\n\n💥 **Crash dumps detected:**\n\`\`\`${dumpSection[1].trim()}\`\`\``;
   }
 
   // Step 4: Report to Discord
