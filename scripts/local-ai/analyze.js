@@ -101,13 +101,14 @@ async function runAnalysis() {
 If healthy, respond: {"status":"stable"}
 
 If problems found, respond with a JSON array like these examples:
-[{"issue":"WSearch service stopped","severity":"Warning","tier":"auto-fix","fix_command":"Start-Service WSearch","explanation":"Restarts Windows Search service"},
-{"issue":"Shadow copy storage full on C:","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /for=C: /all /quiet","explanation":"Deletes old shadow copies to free storage"},
-{"issue":"Low disk space on C:","severity":"Critical","tier":"auto-fix","fix_command":"Remove-Item $env:TEMP/* -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item C:/Windows/Temp/* -Recurse -Force -ErrorAction SilentlyContinue; Clear-RecycleBin -Force -ErrorAction SilentlyContinue","explanation":"Clears temp files and recycle bin to free disk space"},
-{"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir/SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update cache and restarts service"},
-{"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"TPM hardware issue - may need BIOS reset or vendor support"}]
+[{"issue":"WSearch service stopped","severity":"Warning","tier":"auto-fix","fix_command":"Start-Service WSearch","explanation":"Restarts Windows Search service","requires_reboot":false},
+{"issue":"Shadow copy storage full on C:","severity":"Warning","tier":"auto-fix","fix_command":"vssadmin delete shadows /for=C: /all /quiet","explanation":"Deletes old shadow copies to free storage","requires_reboot":false},
+{"issue":"Low disk space on C:","severity":"Critical","tier":"auto-fix","fix_command":"Remove-Item $env:TEMP/* -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item C:/Windows/Temp/* -Recurse -Force -ErrorAction SilentlyContinue; Clear-RecycleBin -Force -ErrorAction SilentlyContinue","explanation":"Clears temp files and recycle bin to free disk space","requires_reboot":false},
+{"issue":"Windows Update error 0x80073D02","severity":"Critical","tier":"manual","fix_command":"Stop-Service wuauserv; Remove-Item $env:windir/SoftwareDistribution -Recurse -Force; Start-Service wuauserv","explanation":"Resets Windows Update cache and restarts service","requires_reboot":true},
+{"issue":"TPM attestation failing","severity":"Critical","tier":"manual","fix_command":"","explanation":"TPM hardware issue - may need BIOS reset or vendor support","requires_reboot":false}]
 
 Each item MUST have its OWN correct explanation matching its own issue.
+Each item MUST include "requires_reboot": true or false indicating if a reboot is needed after the fix.
 
 RULES:
 - auto-fix tier: Restarting services, clearing caches, vssadmin cleanup. fix_command must be a real PowerShell command.
@@ -272,7 +273,23 @@ RULES:
     }
   }
 
-  // Step 3: Report to Discord
+  // Step 3: Schedule reboot if any fix requires it
+  const needsReboot = issues.some(i => i.requires_reboot) || fixResults.some(r => r.success && issues.find(i => i.fix_command === r.command)?.requires_reboot);
+  let rebootMsg = '';
+  if (needsReboot) {
+    // Calculate seconds until 2am
+    const now = new Date();
+    const rebootTime = new Date(now);
+    rebootTime.setHours(2, 0, 0, 0);
+    if (rebootTime <= now) rebootTime.setDate(rebootTime.getDate() + 1);
+    const secondsUntil = Math.round((rebootTime - now) / 1000);
+    
+    console.log(`Scheduling reboot for 2:00 AM (${secondsUntil} seconds)...`);
+    runPowerShell(`shutdown /r /t ${secondsUntil} /c "SysUpdate: Scheduled maintenance reboot at 2:00 AM"`);
+    rebootMsg = `\n\n🔄 **Reboot scheduled for 2:00 AM** (fixes require restart)`;
+  }
+
+  // Step 4: Report to Discord
   let discordMsg = '';
 
   if (fixResults.length > 0) {
@@ -301,6 +318,7 @@ RULES:
   }
 
   if (discordMsg) {
+    discordMsg += rebootMsg;
     const color = manualFixes.some(m => m.severity === 'Critical') ? 16711680 : 16751360;
     try { await sendToDiscord(fixResults.length > 0 ? 'Auto-Fix Report' : 'Alert', discordMsg, color); }
     catch (e) { console.error(`Failed to send to Discord: ${e.message}`); }
