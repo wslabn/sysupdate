@@ -34,6 +34,15 @@ $appEvents = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1
 }
 $events = @($sysEvents) + @($appEvents)
 
+# Recent crash dumps (last 7 days)
+$dumpDir = "$env:SystemRoot\Minidump"
+$dumps = @()
+if (Test-Path $dumpDir) {
+    $dumps = Get-ChildItem $dumpDir -Filter "*.dmp" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) } | ForEach-Object {
+        "$($_.Name) - $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm')) - $([math]::Round($_.Length/1KB,1))KB"
+    }
+}
+
 # Build report
 $report = @"
 === SYSTEM TELEMETRY: $hostname ===
@@ -48,7 +57,10 @@ $($disks -join "`n")
 $(if ($failedServices) { $failedServices -join "`n" } else { "None" })
 
 === RECENT CRITICAL/ERROR EVENTS ===
-$(if ($events) { $events -join "`n" } else { "No critical events" })
+$($events -join "`n")
+
+=== CRASH DUMPS (LAST 7 DAYS) ===
+$(if ($dumps) { $dumps -join "`n" } else { "None" })
 "@
 
 # Write to file for Node to read
