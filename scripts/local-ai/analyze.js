@@ -12,7 +12,7 @@ const HOSTNAME = process.env.COMPUTERNAME || 'Unknown';
 // Load config
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 const DISCORD_WEBHOOK = config.discord_webhook;
-const AZURE_ENDPOINT = config.azure_endpoint;
+const AZURE_ENDPOINT = config.azure_endpoint?.endsWith('/') ? config.azure_endpoint : config.azure_endpoint + '/';
 const AZURE_KEY = config.azure_key;
 const AZURE_DEPLOYMENT = config.azure_deployment || 'gpt-4.1-mini';
 
