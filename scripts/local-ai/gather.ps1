@@ -21,12 +21,18 @@ $failedServices = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.
     "$($_.Name) ($($_.DisplayName)) - $($_.Status)"
 }
 
-# Critical/Error events (last 20)
-$events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -MaxEvents 20 -ErrorAction SilentlyContinue | ForEach-Object {
+# Critical/Error events (last 10 System + last 10 Application)
+$sysEvents = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -MaxEvents 10 -ErrorAction SilentlyContinue | ForEach-Object {
     $msg = ($_.Message -replace '\r\n',' ' -replace '\s+',' ')
     if ($msg.Length -gt 150) { $msg = $msg.Substring(0,150) }
-    "[$($_.TimeCreated.ToString('yyyy-MM-dd HH:mm'))] [$($_.ProviderName)] ID:$($_.Id) $msg"
+    "[SYS][$($_.TimeCreated.ToString('yyyy-MM-dd HH:mm'))] [$($_.ProviderName)] ID:$($_.Id) $msg"
 }
+$appEvents = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1,2 } -MaxEvents 10 -ErrorAction SilentlyContinue | ForEach-Object {
+    $msg = ($_.Message -replace '\r\n',' ' -replace '\s+',' ')
+    if ($msg.Length -gt 150) { $msg = $msg.Substring(0,150) }
+    "[APP][$($_.TimeCreated.ToString('yyyy-MM-dd HH:mm'))] [$($_.ProviderName)] ID:$($_.Id) $msg"
+}
+$events = @($sysEvents) + @($appEvents)
 
 # Build report
 $report = @"
