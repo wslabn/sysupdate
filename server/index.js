@@ -125,6 +125,16 @@ app.get('/api/machines/:id/analyses', auth, async (req, res) => res.json(await g
 app.get('/api/machines/:id/alerts', auth, async (req, res) => res.json(await getActiveAlerts(req.params.id)));
 app.get('/api/alerts', auth, async (req, res) => res.json(await getAllActiveAlerts()));
 app.post('/api/alerts/:id/resolve', auth, async (req, res) => { await resolveAlert(req.params.id); res.json({ ok: true }); });
+app.post('/api/machines/:id/diagnose', auth, async (req, res) => {
+  const machine = await getMachine(req.params.id);
+  if (!machine) return res.status(404).json({ error: 'Not found' });
+  try {
+    await analyzeCheckin(machine, agents, true);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post('/api/customers', auth, async (req, res) => {
   const { name, contact } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });

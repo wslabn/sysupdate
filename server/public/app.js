@@ -154,6 +154,7 @@ const App = {
       <div class="detail-actions">
         <button onclick="App.openTerminal()">Terminal</button>
         <button onclick="App.takeScreenshot()">Screenshot</button>
+        <button onclick="App.runDiagnostic()">Run Diagnostic</button>
         <button onclick="App.sendCommand('update-drivers')">Update Drivers</button>
         <button onclick="App.sendCommand('update-client')">Push Update</button>
         <button onclick="App.switchEnv()">Switch Env</button>
@@ -383,6 +384,16 @@ const App = {
   async takeScreenshot() {
     this.openTerminal();
     await this.api(`/api/machines/${this.currentMachine.id}/command`, { method:'POST', body:JSON.stringify({command:'screenshot'}) });
+  },
+
+  async runDiagnostic() {
+    if (!confirm('Run AI diagnostic on this machine now?')) return;
+    const res = await this.api(`/api/machines/${this.currentMachine.id}/diagnose`, { method: 'POST' });
+    if (res?.error) alert(res.error);
+    else {
+      alert('Diagnostic complete. Check the Diagnostics tab.');
+      this.showMachine(this.currentMachine.id);
+    }
   },
 
   // --- Customers ---
