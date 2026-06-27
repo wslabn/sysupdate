@@ -34,7 +34,7 @@ export async function analyzeCheckin(machine, agents, force = false) {
   console.log(`[AI] ${machine.hostname}: ${result.status === 'stable' ? 'STABLE' : (result.issues?.length || 0) + ' issues found'}`);
 
   // Process results
-  await processAIResult(machine, result, changes, agents);
+  await processAIResult(machine, result, changes || { reason: 'manual-trigger', newEvents: 0, newDiskAlerts: [], newCrashDumps: [] }, agents);
 }
 
 async function detectChanges(machine) {
