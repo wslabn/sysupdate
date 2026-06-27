@@ -24,6 +24,9 @@ class Terminal {
       } else if (msg === '__UPDATE_DRIVERS__') {
         log.info('Received update-drivers command');
         this._runTool('update-drivers-run');
+      } else if (msg.startsWith('__SWITCH_ENV__')) {
+        log.info('Received switch-env command');
+        this._switchEnv(msg.replace('__SWITCH_ENV__', ''));
       } else if (msg.startsWith('__TOOL__')) {
         const tool = msg.replace('__TOOL__', '');
         log.info(`Received tool command: ${tool}`);
@@ -60,6 +63,23 @@ class Terminal {
     if (this.shell && !this.shell.killed) {
       this.shell.kill();
       this.shell = null;
+    }
+  }
+
+  _switchEnv(jsonStr) {
+    try {
+      const config = JSON.parse(jsonStr);
+      const configPath = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate', 'client-config.json');
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      this.agent.send(`[Environment switched to: ${config.server}]\r\n`);
+      this.agent.send('[Restarting client...]\r\n');
+      log.info(`Switched environment to: ${config.server}`);
+      // Restart the app
+      const appPath = process.execPath;
+      spawn(appPath, [], { detached: true, stdio: 'ignore' }).unref();
+      process.exit(0);
+    } catch (e) {
+      this.agent.send(`Switch env failed: ${e.message}\r\n`);
     }
   }
 

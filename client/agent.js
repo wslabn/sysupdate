@@ -6,9 +6,14 @@ const fs = require('fs');
 const path = require('path');
 const log = require('./logger');
 
-const SERVER_URL = process.env.SYSUPDATE_SERVER || 'wss://192.168.200.146:3000';
-const AGENT_SECRET = process.env.SYSUPDATE_SECRET || 'dev-agent-secret';
+const SERVER_URL = process.env.SYSUPDATE_SERVER || loadConfig().server || 'wss://192.168.200.146:3000';
+const AGENT_SECRET = process.env.SYSUPDATE_SECRET || loadConfig().secret || 'dev-agent-secret';
 const DATA_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate');
+const CONFIG_FILE = path.join(DATA_DIR, 'client-config.json');
+
+function loadConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; }
+}
 const ID_FILE = path.join(DATA_DIR, 'machine-id');
 const CLIENT_VERSION = require('./package.json').version;
 

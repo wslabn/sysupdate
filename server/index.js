@@ -77,23 +77,29 @@ app.post('/api/machines/:id/command', auth, async (req, res) => {
   const { command } = req.body;
   const validCommands = ['reboot', 'update-drivers', 'update-client', 'screenshot',
     'disk-cleanup', 'flush-dns', 'clear-browser-cache', 'sfc-scan', 'dism-repair',
-    'restart-spooler', 'clear-temp'];
+    'restart-spooler', 'clear-temp', 'switch-env'];
   if (!validCommands.includes(command))
     return res.status(400).json({ error: 'Invalid command' });
 
   const wsCommands = ['update-client', 'screenshot', 'reboot', 'update-drivers',
     'disk-cleanup', 'flush-dns', 'clear-browser-cache', 'sfc-scan', 'dism-repair',
-    'restart-spooler', 'clear-temp'];
+    'restart-spooler', 'clear-temp', 'switch-env'];
 
   if (wsCommands.includes(command)) {
     const agentWs = agents.get(req.params.id);
     if (!agentWs || agentWs.readyState !== 1)
       return res.status(404).json({ error: 'Agent offline' });
-    const msg = command === 'update-client' ? '__UPDATE__'
-      : command === 'screenshot' ? '__SCREENSHOT__'
-      : command === 'reboot' ? '__REBOOT__'
-      : command === 'update-drivers' ? '__UPDATE_DRIVERS__'
-      : `__TOOL__${command}`;
+    let msg;
+    if (command === 'switch-env') {
+      const { server, secret } = req.body;
+      msg = `__SWITCH_ENV__${JSON.stringify({ server, secret })}`;
+    } else {
+      msg = command === 'update-client' ? '__UPDATE__'
+        : command === 'screenshot' ? '__SCREENSHOT__'
+        : command === 'reboot' ? '__REBOOT__'
+        : command === 'update-drivers' ? '__UPDATE_DRIVERS__'
+        : `__TOOL__${command}`;
+    }
     agentWs.send(msg);
     await addActivity(req.params.id, `Command: ${command}`);
     return res.json({ ok: true, command });
