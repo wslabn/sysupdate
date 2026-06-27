@@ -330,6 +330,9 @@ const App = {
     const event = this.currentMachine.events[index];
     if (!event) return;
     const btn = document.querySelectorAll('.event')[index];
+    // Toggle if already explained
+    const existing = btn.querySelector('.event-explanation');
+    if (existing) { existing.style.display = existing.style.display === 'none' ? 'block' : 'none'; return; }
     btn.style.opacity = '0.6';
     const res = await this.api('/api/explain-event', {
       method: 'POST',
@@ -338,8 +341,9 @@ const App = {
     btn.style.opacity = '1';
     if (res?.explanation) {
       const el = document.createElement('div');
+      el.className = 'event-explanation';
       el.style.cssText = 'margin-top:.5rem;padding:.75rem;background:#1e293b;border-radius:4px;font-size:.82rem;border-left:3px solid #38bdf8';
-      el.innerHTML = `<div style="color:#38bdf8;font-size:.75rem;margin-bottom:.4rem">AI Explanation:</div>${res.explanation.replace(/\n/g, '<br>')}`;
+      el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:#38bdf8;font-size:.75rem">AI Explanation:</span><span class="btn-sm btn-secondary" onclick="event.stopPropagation();this.parentElement.parentElement.style.display='none'">Hide</span></div><div style="margin-top:.4rem">${res.explanation.replace(/\n/g, '<br>')}</div>`;
       btn.appendChild(el);
     } else {
       alert(res?.error || 'Could not get explanation');
