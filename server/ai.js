@@ -99,7 +99,7 @@ ${telemetry}`;
 
   try {
     const endpoint = AZURE_ENDPOINT.endsWith('/') ? AZURE_ENDPOINT : AZURE_ENDPOINT + '/';
-    const url = `${endpoint}openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=2024-10-21`;
+    const url = `${endpoint}openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=2025-01-01-preview`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'api-key': AZURE_KEY },
