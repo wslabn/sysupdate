@@ -3,7 +3,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { createServer } from 'http';
+import { createServer } from 'https';
+import { createServer as createHttpServer } from 'http';
+import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { initDB, upsertMachine, getMachines, getMachine, getCustomers, createCustomer, updateCustomer, deleteCustomer, assignMachine, updateMachineNotes, addActivity, deleteMachine, queueCommand, popCommand } from './db.js';
 import { fileURLToPath } from 'url';
@@ -121,7 +123,14 @@ app.delete('/api/customers/:id', auth, async (req, res) => {
 });
 
 // --- WebSocket ---
-const server = createServer(app);
+const certPath = join(__dirname, 'certs', 'cert.pem');
+const keyPath = join(__dirname, 'certs', 'key.pem');
+const useSSL = existsSync(certPath) && existsSync(keyPath);
+
+const server = useSSL
+  ? createServer({ cert: readFileSync(certPath), key: readFileSync(keyPath) }, app)
+  : createHttpServer(app);
+
 const wss = new WebSocketServer({ server });
 const agents = new Map();
 
@@ -161,7 +170,7 @@ wss.on('connection', (ws, req) => {
 // Start
 const PORT = process.env.PORT || 3000;
 initDB().then(() => {
-  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  server.listen(PORT, () => console.log(`Server running on port ${PORT} (${useSSL ? 'HTTPS' : 'HTTP'})`));
 }).catch(err => {
   console.error('Database init failed:', err);
   process.exit(1);
