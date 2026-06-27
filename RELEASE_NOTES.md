@@ -1,5 +1,10 @@
-## What's New in v1.2.2
+## What's New in v1.3.0
 
-### Fixes
-- Client now starts at system boot (ONSTART) instead of user login (ONLOGON)
-- Allows remote access even when no user is logged in
+### Security
+- Agent authentication — clients must provide a shared secret to connect
+- Server URL and secret configurable via environment variables
+
+### Infrastructure
+- Server migrated from JSON file to PostgreSQL
+- All secrets moved to environment variables
+- Production-ready for Azure deployment
