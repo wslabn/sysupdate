@@ -125,6 +125,42 @@ app.get('/api/machines/:id/analyses', auth, async (req, res) => res.json(await g
 app.get('/api/machines/:id/alerts', auth, async (req, res) => res.json(await getActiveAlerts(req.params.id)));
 app.get('/api/alerts', auth, async (req, res) => res.json(await getAllActiveAlerts()));
 app.post('/api/alerts/:id/resolve', auth, async (req, res) => { await resolveAlert(req.params.id); res.json({ ok: true }); });
+
+app.post('/api/explain-event', auth, async (req, res) => {
+  const { event, hostname } = req.body;
+  if (!event) return res.status(400).json({ error: 'No event provided' });
+  if (!process.env.AZURE_ENDPOINT || !process.env.AZURE_KEY) return res.status(500).json({ error: 'AI not configured' });
+
+  try {
+    const endpoint = process.env.AZURE_ENDPOINT.endsWith('/') ? process.env.AZURE_ENDPOINT : process.env.AZURE_ENDPOINT + '/';
+    const deployment = process.env.AZURE_DEPLOYMENT || 'gpt-4.1-mini';
+    const url = `${endpoint}openai/deployments/${deployment}/chat/completions?api-version=2024-10-21`;
+    const prompt = `You are an MSP technician's assistant. A Windows machine (${hostname}) has this event log entry:
+
+Source: ${event.source}
+Event ID: ${event.id}
+Time: ${event.time}
+Message: ${event.message}
+
+Provide:
+1. A brief plain-English explanation of what this means
+2. Whether it's concerning or can be ignored
+3. If concerning, the recommended fix (with PowerShell commands if applicable)
+
+Be concise and practical.`;
+
+    const aiRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': process.env.AZURE_KEY },
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: 1000 })
+    });
+    if (!aiRes.ok) return res.status(500).json({ error: 'AI request failed' });
+    const data = await aiRes.json();
+    res.json({ explanation: data.choices[0].message.content });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post('/api/machines/:id/diagnose', auth, async (req, res) => {
   const machine = await getMachine(req.params.id);
   if (!machine) return res.status(404).json({ error: 'Not found' });

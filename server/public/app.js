@@ -264,8 +264,8 @@ const App = {
 
   renderEvents(m) {
     const events = m.events || [];
-    return '<div class="section-title">Recent System Errors</div>' + (events.length ? events.map(e => `<div class="event">
-      <div class="evt-meta"><span>${e.time}</span><span>${e.source||''}</span><span>ID:${e.id||''}</span></div>
+    return '<div class="section-title">Recent System Errors</div>' + (events.length ? events.map((e, i) => `<div class="event" style="cursor:pointer" onclick="App.explainEvent(${i})">
+      <div class="evt-meta"><span>${e.time}</span><span>${e.source||''}</span><span>ID:${e.id||''}</span><span class="btn-sm" style="background:#334155;color:#94a3b8">Explain</span></div>
       <div class="evt-msg">${e.message||''}</div>
     </div>`).join('') : '<p class="muted">No events</p>');
   },
@@ -324,6 +324,26 @@ const App = {
   async resolveAlert(id) {
     await this.api(`/api/alerts/${id}/resolve`, { method: 'POST' });
     this.showMachine(this.currentMachine.id);
+  },
+
+  async explainEvent(index) {
+    const event = this.currentMachine.events[index];
+    if (!event) return;
+    const btn = document.querySelectorAll('.event')[index];
+    btn.style.opacity = '0.6';
+    const res = await this.api('/api/explain-event', {
+      method: 'POST',
+      body: JSON.stringify({ event, hostname: this.currentMachine.hostname })
+    });
+    btn.style.opacity = '1';
+    if (res?.explanation) {
+      const el = document.createElement('div');
+      el.style.cssText = 'margin-top:.5rem;padding:.75rem;background:#1e293b;border-radius:4px;font-size:.82rem;border-left:3px solid #38bdf8';
+      el.innerHTML = `<div style="color:#38bdf8;font-size:.75rem;margin-bottom:.4rem">AI Explanation:</div>${res.explanation.replace(/\n/g, '<br>')}`;
+      btn.appendChild(el);
+    } else {
+      alert(res?.error || 'Could not get explanation');
+    }
   },
 
   // --- Tabs ---
