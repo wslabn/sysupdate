@@ -159,7 +159,7 @@ $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -Ma
           'Content-Type': 'application/json',
           'x-agent-secret': AGENT_SECRET
         },
-        rejectAuthorized: false
+        rejectUnauthorized: false
       });
       req.on('error', (e) => log.error(`Check-in failed: ${e.message}`));
       req.write(payload);
