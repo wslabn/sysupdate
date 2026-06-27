@@ -13,18 +13,22 @@ const IGNORED_SERVICES = ['edgeupdate', 'googleupdater', 'waasmedicsvc', 'mapsbr
   'tieringengineservice', 'wbiosrvc', 'energy server', 'dcom', 'dcomlaunch'];
 
 export async function analyzeCheckin(machine, agents) {
-  if (!AZURE_ENDPOINT || !AZURE_KEY) return; // AI not configured
+  if (!AZURE_ENDPOINT || !AZURE_KEY) { console.log(`[AI] Skipped ${machine.hostname}: no API key configured`); return; }
 
   const changes = await detectChanges(machine);
-  if (!changes) return; // Nothing new
+  if (!changes) { console.log(`[AI] Skipped ${machine.hostname}: no changes detected`); return; }
 
   // Check if we already analyzed recently
   const recent = await getRecentAnalysis(machine.id, 24);
-  if (recent && changes.severity !== 'critical') return; // Skip non-critical if analyzed today
+  if (recent && changes.severity !== 'critical') { console.log(`[AI] Skipped ${machine.hostname}: already analyzed today`); return; }
+
+  console.log(`[AI] Analyzing ${machine.hostname} (reason: ${changes.reason}, ${changes.newEvents || 0} new events)...`);
 
   // Run AI analysis
   const result = await runAIAnalysis(machine, changes);
-  if (!result) return;
+  if (!result) { console.log(`[AI] ${machine.hostname}: no result from AI`); return; }
+
+  console.log(`[AI] ${machine.hostname}: ${result.status === 'stable' ? 'STABLE' : (result.issues?.length || 0) + ' issues found'}`);
 
   // Process results
   await processAIResult(machine, result, changes, agents);
