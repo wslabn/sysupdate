@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const log = require('./logger');
 
-const SERVER_URL = 'ws://192.168.200.146:3000';
+const SERVER_URL = process.env.SYSUPDATE_SERVER || 'ws://192.168.200.146:3000';
+const AGENT_SECRET = process.env.SYSUPDATE_SECRET || 'dev-agent-secret';
 const DATA_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate');
 const ID_FILE = path.join(DATA_DIR, 'machine-id');
 const CLIENT_VERSION = require('./package.json').version;
@@ -37,7 +38,7 @@ class Agent extends EventEmitter {
   connect() {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
-    const url = `${SERVER_URL}/ws/agent?id=${this.machineId}`;
+    const url = `${SERVER_URL}/ws/agent?id=${this.machineId}&secret=${AGENT_SECRET}`;
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {
@@ -151,9 +152,13 @@ $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2 } -Ma
       });
 
       const http = require('http');
-      const req = http.request('http://192.168.200.146:3000/api/checkin', {
+      const serverUrl = new URL(SERVER_URL.replace('ws', 'http'));
+      const req = http.request(`${serverUrl.origin}/api/checkin`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          'x-agent-secret': AGENT_SECRET
+        }
       });
       req.on('error', (e) => log.error(`Check-in failed: ${e.message}`));
       req.write(payload);
