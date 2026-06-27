@@ -147,6 +147,7 @@ const App = {
         <button onclick="App.takeScreenshot()">Screenshot</button>
         <button onclick="App.sendCommand('update-drivers')">Update Drivers</button>
         <button onclick="App.sendCommand('update-client')">Push Update</button>
+        <button onclick="App.switchEnv()">Switch Env</button>
         <button class="btn-danger" onclick="App.sendCommand('reboot')">Reboot</button>
         <button class="btn-danger" onclick="App.deleteMachine()">Delete</button>
       </div>
@@ -309,6 +310,19 @@ const App = {
     await this.api(`/api/machines/${this.currentMachine.id}`, { method:'DELETE' });
     await this.loadData();
     this.showHome();
+  },
+
+  async switchEnv() {
+    const server = prompt('Enter server URL (e.g. wss://rmm.yourdomain.com):', 'wss://192.168.200.146:3000');
+    if (!server) return;
+    const secret = prompt('Enter agent secret for that server:', 'dev-agent-secret');
+    if (!secret) return;
+    if (!confirm(`Switch this machine to:\n${server}\n\nThe client will restart and connect to the new server.`)) return;
+    const res = await this.api(`/api/machines/${this.currentMachine.id}/command`, {
+      method: 'POST', body: JSON.stringify({ command: 'switch-env', server, secret })
+    });
+    if (res?.error) alert(res.error);
+    else alert('Environment switch sent. Client will restart.');
   },
 
   async takeScreenshot() {
