@@ -75,22 +75,31 @@ const App = {
     });
   },
 
-  showHome() {
+  async showHome() {
     this.currentCustomer = null;
     this.currentMachine = null;
     this.renderSidebar();
     this.showView('home');
     const online = this.machines.filter(m => (Date.now() - new Date(m.last_seen)) / 60000 < 70).length;
     const offline = this.machines.length - online;
+    const alerts = await this.api('/api/alerts') || [];
+    const alertsHtml = alerts.length ? alerts.slice(0, 10).map(a => `<div class="info-card" style="border-left-color:${a.severity==='Critical'?'#ef4444':'#facc15'};margin-bottom:.5rem;cursor:pointer" onclick="App.showMachine('${a.machine_id}')">
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:.82rem"><strong>${a.hostname}</strong> — ${a.issue}</span>
+        <span style="font-size:.7rem;color:#94a3b8">${new Date(a.created_at).toLocaleString()}</span>
+      </div>
+    </div>`).join('') : '<p class="muted">No active alerts</p>';
     document.getElementById('view-home').innerHTML = `
       <h2 style="color:#38bdf8;margin-bottom:1.5rem">Dashboard</h2>
       <div class="stats">
         <div class="stat-card"><div class="value">${this.machines.length}</div><div class="label">Total Machines</div></div>
         <div class="stat-card"><div class="value online">${online}</div><div class="label">Online</div></div>
         <div class="stat-card"><div class="value offline">${offline}</div><div class="label">Offline</div></div>
-        <div class="stat-card"><div class="value">${this.customers.length}</div><div class="label">Customers</div></div>
+        <div class="stat-card"><div class="value" style="color:${alerts.length?'#ef4444':'#4ade80'}">${alerts.length}</div><div class="label">Active Alerts</div></div>
       </div>
-      <div class="section-title">Recent Machines</div>
+      <div class="section-title">Active Alerts</div>
+      ${alertsHtml}
+      <div class="section-title" style="margin-top:1.5rem">Recent Machines</div>
       <div class="machine-list">${this.machines.slice(0, 10).map(m => this.machineCard(m)).join('')}</div>
     `;
   },
@@ -167,6 +176,8 @@ const App = {
         <div class="tab" onclick="App.switchTab('events')">Events</div>
         <div class="tab" onclick="App.switchTab('notes')">Notes</div>
         <div class="tab" onclick="App.switchTab('activity')">Activity</div>
+        <div class="tab" onclick="App.switchTab('diagnostics')">Diagnostics</div>
+        <div class="tab" onclick="App.switchTab('alerts')">Alerts</div>
       </div>
       <div class="tab-content active" id="tab-overview">${this.renderOverview(m)}</div>
       <div class="tab-content" id="tab-storage">${this.renderStorage(m)}</div>
@@ -176,6 +187,8 @@ const App = {
       <div class="tab-content" id="tab-events">${this.renderEvents(m)}</div>
       <div class="tab-content" id="tab-notes">${this.renderNotes(m)}</div>
       <div class="tab-content" id="tab-activity">${this.renderActivity(m)}</div>
+      <div class="tab-content" id="tab-diagnostics">${await this.renderDiagnosticsTab(m)}</div>
+      <div class="tab-content" id="tab-alerts">${await this.renderAlertsTab(m)}</div>
     `;
   },
 
@@ -268,6 +281,48 @@ const App = {
       <div style="font-size:.75rem;color:#94a3b8">${new Date(a.timestamp).toLocaleString()}</div>
       <div style="font-size:.82rem;margin-top:.2rem">${a.action}</div>
     </div>`).join('') : '<p class="muted">No activity</p>');
+  },
+
+  async renderDiagnosticsTab(m) {
+    const analyses = await this.api(`/api/machines/${m.id}/analyses`) || [];
+    if (!analyses.length) return '<div class="section-title">AI Diagnostics</div><p class="muted">No analyses yet. Will run on next check-in if changes detected.</p>';
+    return '<div class="section-title">AI Diagnostics</div>' + analyses.map(a => {
+      const issues = a.ai_response?.issues || [];
+      const actions = a.actions_taken || [];
+      return `<div class="info-card" style="border-left-color:#38bdf8;margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:.75rem;color:#94a3b8">${new Date(a.created_at).toLocaleString()}</span>
+          <span style="font-size:.7rem;color:#94a3b8">${a.trigger_reason}</span>
+        </div>
+        ${a.ai_response?.status === 'stable' ? '<div style="color:#4ade80;font-size:.85rem;margin-top:.4rem">System Stable</div>' : ''}
+        ${issues.length ? issues.map(i => `<div style="margin-top:.4rem;font-size:.82rem">
+          <span style="color:${i.severity==='Critical'?'#ef4444':'#facc15'}">${i.severity}:</span> ${i.issue}
+          ${i.fix_command ? `<div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem"><code>${i.fix_command}</code></div>` : ''}
+        </div>`).join('') : ''}
+        ${actions.length ? '<div style="margin-top:.4rem;font-size:.75rem;color:#4ade80">Actions: ' + actions.map(a => a.action + ': ' + a.issue).join(', ') + '</div>' : ''}
+      </div>`;
+    }).join('');
+  },
+
+  async renderAlertsTab(m) {
+    const alerts = await this.api(`/api/machines/${m.id}/alerts`) || [];
+    if (!alerts.length) return '<div class="section-title">Active Alerts</div><p class="muted">No active alerts.</p>';
+    return '<div class="section-title">Active Alerts</div>' + alerts.map(a => `<div class="info-card" style="border-left-color:${a.severity==='Critical'?'#ef4444':'#facc15'};margin-bottom:.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <span style="font-size:.82rem;font-weight:bold;color:${a.severity==='Critical'?'#ef4444':'#facc15'}">${a.severity}:</span>
+          <span style="font-size:.82rem">${a.issue}</span>
+        </div>
+        <button class="btn-sm btn-secondary" onclick="App.resolveAlert(${a.id})">Resolve</button>
+      </div>
+      ${a.fix_command ? `<div style="margin-top:.4rem"><code style="font-size:.75rem;color:#94a3b8">${a.fix_command}</code></div>` : ''}
+      <div style="font-size:.7rem;color:#94a3b8;margin-top:.3rem">Since: ${new Date(a.created_at).toLocaleString()}</div>
+    </div>`).join('');
+  },
+
+  async resolveAlert(id) {
+    await this.api(`/api/alerts/${id}/resolve`, { method: 'POST' });
+    this.showMachine(this.currentMachine.id);
   },
 
   // --- Tabs ---
