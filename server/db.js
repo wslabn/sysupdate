@@ -28,6 +28,38 @@ export async function initDB() {
       contact JSONB DEFAULT '{}',
       notes TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS machine_state (
+      machine_id TEXT PRIMARY KEY REFERENCES machines(id) ON DELETE CASCADE,
+      event_hashes JSONB DEFAULT '[]',
+      stopped_services JSONB DEFAULT '[]',
+      disk_alerts JSONB DEFAULT '[]',
+      crash_dumps JSONB DEFAULT '[]',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_analyses (
+      id SERIAL PRIMARY KEY,
+      machine_id TEXT REFERENCES machines(id) ON DELETE CASCADE,
+      trigger_reason TEXT,
+      telemetry_summary TEXT,
+      ai_response JSONB,
+      actions_taken JSONB DEFAULT '[]',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS alerts (
+      id SERIAL PRIMARY KEY,
+      machine_id TEXT REFERENCES machines(id) ON DELETE CASCADE,
+      issue TEXT,
+      severity TEXT,
+      status TEXT DEFAULT 'new',
+      fix_command TEXT,
+      discord_sent BOOLEAN DEFAULT FALSE,
+      reminded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ
+    );
   `);
 }
 
@@ -147,4 +179,90 @@ function formatMachine(row) {
     pending_command: row.pending_command,
     last_seen: row.last_seen
   };
+}
+
+
+// --- State tracking ---
+export async function getState(machineId) {
+  const { rows } = await pool.query('SELECT * FROM machine_state WHERE machine_id = $1', [machineId]);
+  return rows[0] || null;
+}
+
+export async function saveState(machineId, state) {
+  await pool.query(`
+    INSERT INTO machine_state (machine_id, event_hashes, stopped_services, disk_alerts, crash_dumps, updated_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (machine_id) DO UPDATE SET
+      event_hashes = $2, stopped_services = $3, disk_alerts = $4, crash_dumps = $5, updated_at = NOW()
+  `, [machineId, JSON.stringify(state.eventHashes), JSON.stringify(state.stoppedServices),
+      JSON.stringify(state.diskAlerts), JSON.stringify(state.crashDumps)]);
+}
+
+// --- AI Analyses ---
+export async function saveAnalysis(machineId, triggerReason, telemetrySummary, aiResponse, actionsTaken) {
+  await pool.query(`
+    INSERT INTO ai_analyses (machine_id, trigger_reason, telemetry_summary, ai_response, actions_taken)
+    VALUES ($1, $2, $3, $4, $5)
+  `, [machineId, triggerReason, telemetrySummary, JSON.stringify(aiResponse), JSON.stringify(actionsTaken)]);
+}
+
+export async function getRecentAnalysis(machineId, hoursAgo = 24) {
+  const { rows } = await pool.query(
+    'SELECT * FROM ai_analyses WHERE machine_id = $1 AND created_at > NOW() - $2::interval ORDER BY created_at DESC LIMIT 1',
+    [machineId, `${hoursAgo} hours`]);
+  return rows[0] || null;
+}
+
+export async function getAnalyses(machineId, limit = 10) {
+  const { rows } = await pool.query(
+    'SELECT * FROM ai_analyses WHERE machine_id = $1 ORDER BY created_at DESC LIMIT $2',
+    [machineId, limit]);
+  return rows;
+}
+
+// --- Alerts ---
+export async function createAlert(machineId, issue, severity, fixCommand) {
+  // Check if same alert already exists and is unresolved
+  const { rows: existing } = await pool.query(
+    "SELECT id FROM alerts WHERE machine_id = $1 AND issue = $2 AND status != 'resolved'", [machineId, issue]);
+  if (existing.length > 0) return existing[0];
+  const { rows } = await pool.query(
+    'INSERT INTO alerts (machine_id, issue, severity, fix_command) VALUES ($1, $2, $3, $4) RETURNING *',
+    [machineId, issue, severity, fixCommand || null]);
+  return rows[0];
+}
+
+export async function getActiveAlerts(machineId) {
+  const { rows } = await pool.query(
+    "SELECT * FROM alerts WHERE machine_id = $1 AND status != 'resolved' ORDER BY created_at DESC",
+    [machineId]);
+  return rows;
+}
+
+export async function getAllActiveAlerts() {
+  const { rows } = await pool.query(
+    "SELECT a.*, m.hostname FROM alerts a JOIN machines m ON a.machine_id = m.id WHERE a.status != 'resolved' ORDER BY a.created_at DESC");
+  return rows;
+}
+
+export async function resolveAlert(alertId) {
+  await pool.query("UPDATE alerts SET status = 'resolved', resolved_at = NOW() WHERE id = $1", [alertId]);
+}
+
+export async function markAlertDiscordSent(alertId) {
+  await pool.query("UPDATE alerts SET discord_sent = TRUE WHERE id = $1", [alertId]);
+}
+
+export async function getAlertsNeedingReminder(days = 7) {
+  const { rows } = await pool.query(
+    `SELECT a.*, m.hostname FROM alerts a JOIN machines m ON a.machine_id = m.id
+     WHERE a.status = 'new' AND a.discord_sent = TRUE
+     AND (a.reminded_at IS NULL OR a.reminded_at < NOW() - $1::interval)
+     AND a.created_at < NOW() - $1::interval`,
+    [`${days} days`]);
+  return rows;
+}
+
+export async function markReminded(alertId) {
+  await pool.query("UPDATE alerts SET reminded_at = NOW() WHERE id = $1", [alertId]);
 }

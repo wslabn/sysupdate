@@ -7,7 +7,8 @@ import { createServer } from 'https';
 import { createServer as createHttpServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
-import { initDB, upsertMachine, getMachines, getMachine, getCustomers, createCustomer, updateCustomer, deleteCustomer, assignMachine, updateMachineNotes, addActivity, deleteMachine, queueCommand, popCommand } from './db.js';
+import { initDB, upsertMachine, getMachines, getMachine, getCustomers, createCustomer, updateCustomer, deleteCustomer, assignMachine, updateMachineNotes, addActivity, deleteMachine, queueCommand, popCommand, getAnalyses, getActiveAlerts, getAllActiveAlerts, resolveAlert } from './db.js';
+import { analyzeCheckin } from './ai.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -46,6 +47,11 @@ app.post('/api/checkin', agentAuth, async (req, res) => {
   if (!machineId || !hostname) return res.status(400).json({ error: 'Missing fields' });
   await upsertMachine(machineId, hostname, hardware, events, customerId, driverUpdate, windowsUpdate, disks, diagnostics, clientVersion);
   const command = await popCommand(machineId);
+
+  // Trigger AI analysis in background (don't block check-in response)
+  const machine = await getMachine(machineId);
+  if (machine) analyzeCheckin(machine, agents).catch(e => console.error(`AI analysis error for ${machineId}:`, e.message));
+
   res.json({ ok: true, command });
 });
 
@@ -113,6 +119,12 @@ app.post('/api/machines/:id/command', auth, async (req, res) => {
 
 // Customers
 app.get('/api/customers', auth, async (req, res) => res.json(await getCustomers()));
+
+// AI Analyses & Alerts
+app.get('/api/machines/:id/analyses', auth, async (req, res) => res.json(await getAnalyses(req.params.id)));
+app.get('/api/machines/:id/alerts', auth, async (req, res) => res.json(await getActiveAlerts(req.params.id)));
+app.get('/api/alerts', auth, async (req, res) => res.json(await getAllActiveAlerts()));
+app.post('/api/alerts/:id/resolve', auth, async (req, res) => { await resolveAlert(req.params.id); res.json({ ok: true }); });
 app.post('/api/customers', auth, async (req, res) => {
   const { name, contact } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
