@@ -2,6 +2,7 @@ const { app, Tray, Menu, Notification, nativeImage, shell } = require('electron'
 const path = require('path');
 const Agent = require('./agent');
 const Terminal = require('./terminal');
+const Remote = require('./remote');
 const CLIENT_VERSION = require('./package.json').version;
 const LOG_DIR = path.join(process.env.ProgramData || 'C:\\ProgramData', 'sysupdate', 'logs');
 
@@ -40,6 +41,7 @@ app.whenReady().then(() => {
   // Start agent
   agent = new Agent();
   terminal = new Terminal(agent);
+  const remote = new Remote(agent);
 
   agent.on('connected', () => {
     tray.setToolTip('SysUpdate - Connected');

@@ -210,7 +210,10 @@ wss.on('connection', (ws, req) => {
     ws.machineId = machineId;
     ws.on('close', () => agents.delete(machineId));
     ws.on('message', (data) => {
-      if (ws.dashboardWs && ws.dashboardWs.readyState === 1) {
+      if (ws.remoteWs && ws.remoteWs.readyState === 1) {
+        ws.remoteWs.send(data);
+      }
+      if (ws.dashboardWs && ws.dashboardWs.readyState === 1 && !Buffer.isBuffer(data)) {
         ws.dashboardWs.send(data.toString());
       }
     });
@@ -226,6 +229,21 @@ wss.on('connection', (ws, req) => {
     });
     ws.on('close', () => { agentWs.dashboardWs = null; });
     ws.send('\r\nConnected to ' + machineId + '\r\n');
+  } else if (url.pathname === '/ws/remote') {
+    const tokenParam = url.searchParams.get('token');
+    const machineId = url.searchParams.get('id');
+    try { jwt.verify(tokenParam, JWT_SECRET); } catch { return ws.close(4001, 'Unauthorized'); }
+    const agentWs = agents.get(machineId);
+    if (!agentWs || agentWs.readyState !== 1) return ws.close(4002, 'Agent offline');
+    agentWs.remoteWs = ws;
+    agentWs.send('__REMOTE_START__');
+    ws.on('message', (data) => {
+      if (agentWs.readyState === 1) agentWs.send(data);
+    });
+    ws.on('close', () => {
+      agentWs.remoteWs = null;
+      if (agentWs.readyState === 1) agentWs.send('__REMOTE_STOP__');
+    });
   } else {
     ws.close(4003, 'Unknown path');
   }

@@ -152,6 +152,7 @@ const App = {
         <div><h2>${m.hostname}</h2><div class="version">${m.clientVersion ? 'v' + m.clientVersion : 'Version unknown'}</div></div>
       </div>
       <div class="detail-actions">
+        <button onclick="App.openRemote()">Remote Desktop</button>
         <button onclick="App.openTerminal()">Terminal</button>
         <button onclick="App.takeScreenshot()">Screenshot</button>
         <button onclick="App.runDiagnostic()">Run Diagnostic</button>
@@ -418,6 +419,12 @@ const App = {
       alert('Diagnostic complete. Check the Diagnostics tab.');
       this.showMachine(this.currentMachine.id);
     }
+  },
+
+  openRemote() {
+    if (!this.currentMachine) return;
+    const url = `/remote.html?token=${this.token}&id=${this.currentMachine.id}&hostname=${this.currentMachine.hostname}`;
+    window.open(url, `remote-${this.currentMachine.id}`, 'width=1280,height=800');
   },
 
   // --- Customers ---
