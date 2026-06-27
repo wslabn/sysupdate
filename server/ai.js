@@ -106,7 +106,11 @@ ${telemetry}`;
       body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 4096 })
     });
 
-    if (!res.ok) { console.error(`AI error: ${res.status}`); return null; }
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`AI error: ${res.status} - ${errBody}`);
+      return null;
+    }
     const data = await res.json();
     const response = data.choices[0].message.content;
 
