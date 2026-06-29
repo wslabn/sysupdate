@@ -9,6 +9,8 @@ import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { initDB, upsertMachine, getMachines, getMachine, getCustomers, createCustomer, updateCustomer, deleteCustomer, assignMachine, updateMachineNotes, addActivity, deleteMachine, queueCommand, popCommand, getAnalyses, getActiveAlerts, getAllActiveAlerts, resolveAlert } from './db.js';
 import { analyzeCheckin } from './ai.js';
+import pg from 'pg';
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -131,6 +133,12 @@ app.post('/api/explain-event', auth, async (req, res) => {
   if (!event) return res.status(400).json({ error: 'No event provided' });
   if (!process.env.AZURE_ENDPOINT || !process.env.AZURE_KEY) return res.status(500).json({ error: 'AI not configured' });
 
+  // Check cache first
+  const cacheKey = `${event.source}_${event.id}_${event.time}`;
+  const { rows: cached } = await pool.query(
+    'SELECT explanation FROM event_explanations WHERE cache_key = $1', [cacheKey]);
+  if (cached.length > 0) return res.json({ explanation: cached[0].explanation });
+
   try {
     const endpoint = process.env.AZURE_ENDPOINT.endsWith('/') ? process.env.AZURE_ENDPOINT : process.env.AZURE_ENDPOINT + '/';
     const deployment = process.env.AZURE_DEPLOYMENT || 'gpt-4.1-mini';
@@ -156,7 +164,14 @@ Be concise and practical.`;
     });
     if (!aiRes.ok) return res.status(500).json({ error: 'AI request failed' });
     const data = await aiRes.json();
-    res.json({ explanation: data.choices[0].message.content });
+    const explanation = data.choices[0].message.content;
+
+    // Cache it
+    await pool.query(
+      'INSERT INTO event_explanations (cache_key, explanation) VALUES ($1, $2) ON CONFLICT (cache_key) DO NOTHING',
+      [cacheKey, explanation]);
+
+    res.json({ explanation });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

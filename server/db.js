@@ -60,6 +60,12 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       resolved_at TIMESTAMPTZ
     );
+
+    CREATE TABLE IF NOT EXISTS event_explanations (
+      cache_key TEXT PRIMARY KEY,
+      explanation TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 }
 
