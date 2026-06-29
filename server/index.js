@@ -210,10 +210,11 @@ wss.on('connection', (ws, req) => {
     ws.machineId = machineId;
     ws.on('close', () => agents.delete(machineId));
     ws.on('message', (data) => {
-      if (ws.remoteWs && ws.remoteWs.readyState === 1) {
+      const isFrame = Buffer.isBuffer(data) && data.length > 2 && data[0] === 0xFF && data[1] === 0xD8;
+      if (ws.remoteWs && ws.remoteWs.readyState === 1 && isFrame) {
         ws.remoteWs.send(data);
       }
-      if (ws.dashboardWs && ws.dashboardWs.readyState === 1 && !Buffer.isBuffer(data)) {
+      if (ws.dashboardWs && ws.dashboardWs.readyState === 1 && !isFrame) {
         ws.dashboardWs.send(data.toString());
       }
     });
