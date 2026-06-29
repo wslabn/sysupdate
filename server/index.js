@@ -186,6 +186,50 @@ app.post('/api/machines/:id/diagnose', auth, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+app.post('/api/machines/:id/chat', auth, async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'No message' });
+  const machine = await getMachine(req.params.id);
+  if (!machine) return res.status(404).json({ error: 'Not found' });
+  if (!process.env.AZURE_ENDPOINT || !process.env.AZURE_KEY) return res.status(500).json({ error: 'AI not configured' });
+
+  try {
+    const endpoint = process.env.AZURE_ENDPOINT.endsWith('/') ? process.env.AZURE_ENDPOINT : process.env.AZURE_ENDPOINT + '/';
+    const deployment = process.env.AZURE_DEPLOYMENT || 'gpt-4.1-mini';
+    const url = `${endpoint}openai/deployments/${deployment}/chat/completions?api-version=2024-10-21`;
+
+    const context = `You are an MSP technician's AI assistant. You have full context about this Windows machine:
+
+Hostname: ${machine.hostname}
+Hardware: ${JSON.stringify(machine.hardware)}
+Disks: ${JSON.stringify(machine.disks)}
+Diagnostics: ${JSON.stringify(machine.diagnostics)}
+Recent Events: ${JSON.stringify((machine.events || []).slice(0, 5))}
+Client Version: ${machine.clientVersion}
+Last Seen: ${machine.last_seen}
+
+Answer the technician's question. Be practical, concise, and provide PowerShell commands when relevant.`;
+
+    const aiRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': process.env.AZURE_KEY },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: context },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.3,
+        max_tokens: 1500
+      })
+    });
+    if (!aiRes.ok) return res.status(500).json({ error: 'AI request failed' });
+    const data = await aiRes.json();
+    res.json({ reply: data.choices[0].message.content });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post('/api/customers', auth, async (req, res) => {
   const { name, contact } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });

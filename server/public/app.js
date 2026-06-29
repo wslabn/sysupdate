@@ -180,6 +180,7 @@ const App = {
         <div class="tab" onclick="App.switchTab('activity')">Activity</div>
         <div class="tab" onclick="App.switchTab('diagnostics')">Diagnostics</div>
         <div class="tab" onclick="App.switchTab('alerts')">Alerts</div>
+        <div class="tab" onclick="App.switchTab('chat')">AI Chat</div>
       </div>
       <div class="tab-content active" id="tab-overview">${this.renderOverview(m)}</div>
       <div class="tab-content" id="tab-storage">${this.renderStorage(m)}</div>
@@ -191,6 +192,7 @@ const App = {
       <div class="tab-content" id="tab-activity">${this.renderActivity(m)}</div>
       <div class="tab-content" id="tab-diagnostics">${await this.renderDiagnosticsTab(m)}</div>
       <div class="tab-content" id="tab-alerts">${await this.renderAlertsTab(m)}</div>
+      <div class="tab-content" id="tab-chat">${this.renderChat()}</div>
     `;
   },
 
@@ -325,6 +327,39 @@ const App = {
   async resolveAlert(id) {
     await this.api(`/api/alerts/${id}/resolve`, { method: 'POST' });
     this.showMachine(this.currentMachine.id);
+  },
+
+  renderChat() {
+    return `<div class="section-title">AI Assistant</div>
+      <p class="muted" style="margin-bottom:.75rem">Ask anything about this machine. The AI has full context (hardware, events, disk, diagnostics).</p>
+      <div id="chat-messages" style="max-height:400px;overflow-y:auto;margin-bottom:.75rem"></div>
+      <div style="display:flex;gap:.5rem">
+        <input type="text" id="chat-input" placeholder="Ask a question..." style="flex:1;margin-bottom:0" onkeydown="if(event.key==='Enter')App.sendChat()">
+        <button onclick="App.sendChat()">Send</button>
+      </div>`;
+  },
+
+  async sendChat() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    const messages = document.getElementById('chat-messages');
+    messages.innerHTML += `<div class="info-card" style="border-left-color:#38bdf8"><div style="font-size:.75rem;color:#38bdf8">You:</div><div style="font-size:.82rem">${msg}</div></div>`;
+    messages.innerHTML += `<div class="info-card" id="chat-loading" style="border-left-color:#334155"><span class="muted">Thinking...</span></div>`;
+    messages.scrollTop = messages.scrollHeight;
+
+    const res = await this.api(`/api/machines/${this.currentMachine.id}/chat`, {
+      method: 'POST', body: JSON.stringify({ message: msg })
+    });
+
+    document.getElementById('chat-loading')?.remove();
+    if (res?.reply) {
+      messages.innerHTML += `<div class="info-card" style="border-left-color:#4ade80"><div style="font-size:.75rem;color:#4ade80">AI:</div><div style="font-size:.82rem;white-space:pre-wrap">${res.reply}</div></div>`;
+    } else {
+      messages.innerHTML += `<div class="info-card" style="border-left-color:#ef4444"><span class="muted">${res?.error || 'Failed to get response'}</span></div>`;
+    }
+    messages.scrollTop = messages.scrollHeight;
   },
 
   async explainEvent(index) {
